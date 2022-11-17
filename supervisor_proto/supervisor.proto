@@ -1,0 +1,50 @@
+// Copyright 2015 gRPC authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+option go_package = "google.golang.org/grpc/examples/supervisor/supervisor";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.supervisor";
+option java_outer_classname = "SupervisorProto";
+
+import "google/protobuf/empty.proto";
+package supervisor;
+
+
+message Result{
+  bool hasErr = 1;
+  string errInfo = 2;
+  string tenantID = 3;
+}
+
+message AssignRequest {
+  string tenantID = 1;
+  string tidbStatusAddr = 2;
+  string pdAddr = 3;
+}
+
+message UnassignRequest {
+  string assertTenantID = 1;
+}
+
+message GetTenantResponse {
+  string tenantID = 1;
+}
+
+service Assign{
+  rpc AssignTenant (AssignRequest) returns (Result) {}
+  rpc UnassignTenant (UnassignRequest) returns (Result) {}
+  rpc GetCurrentTenant (google.protobuf.Empty) returns (GetTenantResponse){}
+}
