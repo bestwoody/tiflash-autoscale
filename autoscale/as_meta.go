@@ -181,7 +181,7 @@ func (c *TenantDesc) GetPodNames() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	ret := make([]string, 0, len(c.pods))
-	for k, _ := range c.pods {
+	for k := range c.pods {
 		ret = append(ret, k)
 	}
 	return ret

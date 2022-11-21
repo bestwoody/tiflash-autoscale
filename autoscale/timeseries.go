@@ -62,7 +62,7 @@ func (c *SimpleTimeSeries) Reset() {
 	for c.series.Len() > 0 {
 		c.series.Remove(c.series.Front())
 	}
-	for i, _ := range c.Statistics {
+	for i := range c.Statistics {
 		c.Statistics[i].Reset()
 	}
 	c.max_time = 0
