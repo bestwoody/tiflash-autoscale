@@ -60,10 +60,13 @@ type ClusterManager struct {
 	shutdown      int32 // atomic
 	watchMu       sync.Mutex
 	watcher       watch.Interface
+	muOfCloneSet  sync.Mutex
 
 	tsContainer *TimeSeriesContainer
 	lstTsMap    map[string]int64
 }
+
+// cnt: want, create, get
 
 // TODO expire of removed Pod in tsContainer,lstTsMap
 
@@ -170,6 +173,8 @@ func (c *ClusterManager) analyzeMetrics() {
 
 				//Mock Metrics
 				CoreOfPod := DefaultCoreOfPod
+
+				// Print Debug Info
 				curTs := time.Now().Unix()
 				// cpuusage := MockComputeStatisticsOfTenant(CoreOfPod, cntOfPods, tenant.MaxCntOfPod)
 				if lastTs != curTs {
@@ -179,6 +184,7 @@ func (c *ClusterManager) analyzeMetrics() {
 					// log.Printf("[ComputeStatisticsOfTenant] cpu usage: %v\n", cpuusage)
 					lastTs = curTs
 				}
+
 				bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, CoreOfPod)
 				if bestPods != -1 && cntOfPods != bestPods {
 					log.Printf("[analyzeMetrics] resize pods, from %v to  %v , tenant: %v\n", tenant.GetCntOfPods(), bestPods, tenant.Name)
@@ -322,7 +328,7 @@ func (c *ClusterManager) initK8sComponents() {
 					"app": c.CloneSetName,
 				}},
 			Spec: v1alpha1.CloneSetSpec{
-				Replicas: Int32Ptr(int32(c.AutoScaleMeta.PrewarmPods.MaxCntOfPod)),
+				Replicas: Int32Ptr(int32(c.AutoScaleMeta.SoftLimit)),
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						"app": c.CloneSetName,
@@ -420,8 +426,12 @@ func (c *ClusterManager) initK8sComponents() {
 	c.AutoScaleMeta.ScanStateOfPods()
 
 	// watch changes of pods
-	c.wg.Add(1)
+	c.wg.Add(2)
+
 	go c.watchPodsLoop(resVer)
+
+	// pod prepare & GC
+	go c.podPrepareLoop()
 }
 
 //
@@ -485,30 +495,62 @@ func NewClusterManager() *ClusterManager {
 	return ret
 }
 
-// TODO mutex protection
-func AddNewPods(c *ClusterManager, cli *kruiseclientset.Clientset, ns string, cloneSet *v1alpha1.CloneSet, from int, delta int) (*v1alpha1.CloneSet, error) {
-	// TODO add mutex protection?
-	if delta <= 0 {
-		return cloneSet, fmt.Errorf("delta <= 0")
-	}
-	if int32(from) != *cloneSet.Spec.Replicas {
-		return cloneSet, fmt.Errorf("int32(from) != *cloneSet.Spec.Replicas")
-	}
+func (c *ClusterManager) addNewPods(delta int32) (*v1alpha1.CloneSet, error) {
+	c.muOfCloneSet.Lock()
+	defer c.muOfCloneSet.Unlock()
+	// if delta <= 0 {
+	// 	return cloneSet, fmt.Errorf("delta <= 0")
+	// }
+	// if int32(from) != *cloneSet.Spec.Replicas {
+	// 	return cloneSet, fmt.Errorf("int32(from) != *cloneSet.Spec.Replicas")
+	// }
 	newReplicas := new(int32)
-	*newReplicas = int32(from + delta)
-	cloneSet.Spec.Replicas = newReplicas
-	ret, err := cli.AppsV1alpha1().CloneSets(ns).Update(context.TODO(), cloneSet, metav1.UpdateOptions{})
+	*newReplicas = int32(*c.CloneSet.Spec.Replicas + delta)
+	c.CloneSet.Spec.Replicas = newReplicas
+	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
 	if err != nil {
-		return cloneSet, fmt.Errorf(err.Error())
+		return c.CloneSet, fmt.Errorf(err.Error())
 	} else {
 		c.CloneSet = ret.DeepCopy()
 		return ret, nil
 	}
 }
 
-func (c *ClusterManager) AddNewPods(from int, delta int) (*v1alpha1.CloneSet, error) {
-	return AddNewPods(c, c.Cli, c.Namespace, c.CloneSet, from, delta)
+func (c *ClusterManager) removePods(pods2del []string) (*v1alpha1.CloneSet, error) {
+	c.muOfCloneSet.Lock()
+	defer c.muOfCloneSet.Unlock()
+	newReplicas := new(int32)
+	*newReplicas = int32(*c.CloneSet.Spec.Replicas - int32(len(pods2del)))
+	c.CloneSet.Spec.Replicas = newReplicas
+	c.CloneSet.Spec.ScaleStrategy.PodsToDelete = pods2del
+	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
+	if err != nil {
+		log.Printf("[ClusterManager.removePods] failed, error: %v\n", err.Error())
+		return c.CloneSet, fmt.Errorf(err.Error())
+	} else {
+		c.CloneSet = ret.DeepCopy()
+		ret.Spec.ScaleStrategy.PodsToDelete = nil // reset field Spec.ScaleStrategy.PodsToDelete
+		return ret, nil
+	}
 }
+
+func (c *ClusterManager) podPrepareLoop() {
+
+	defer c.wg.Done()
+	for {
+		time.Sleep(1000 * time.Millisecond)
+		if atomic.LoadInt32(&c.shutdown) != 0 {
+			return
+		}
+		c.AutoScaleMeta.PrewarmPool.DoPodsWarm(c)
+		// TODO  addNewPods / removePods
+
+	}
+}
+
+// func (c *ClusterManager) AddNewPods(from int, delta int) (*v1alpha1.CloneSet, error) {
+// 	return AddNewPods(c, c.Cli, c.Namespace, c.CloneSet, from, delta)
+// }
 
 func (c *ClusterManager) Wait() {
 	c.wg.Wait()

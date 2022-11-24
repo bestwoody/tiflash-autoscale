@@ -29,6 +29,8 @@ const (
 	CmRnPodStateAssigning   = 2
 	CmRnPodStateAssigned    = 3
 	CmRnPodStateUnknown     = -1
+
+	FailCntCheckTimeWindow = 300 // 300s
 )
 
 type PodDesc struct {
@@ -102,7 +104,7 @@ func (c *PodDesc) AssignTenantWithMockConf(tenant string) (resp *supervisor.Resu
 	// if
 	c.switchState(PodStateUnassigned, PodStateAssigned)
 	// {
-	return AssignTenant(c.IP, tenant)
+	return AssignTenantHardCodeArgs(c.IP, tenant)
 	// return err == nil && !resp.HasErr
 	// } else {
 	// 	return false
@@ -134,14 +136,20 @@ func (c *PodDesc) HandleUnassignError() {
 	// TODO implements
 }
 
+type TenantConf struct { // TODO use it
+	tidbStatusAddr string
+	pdAddr         string
+}
+
 type TenantDesc struct {
 	Name        string
-	MinCntOfPod int
-	MaxCntOfPod int
+	MinCntOfPod int // conf
+	MaxCntOfPod int // conf
 	pods        map[string]*PodDesc
 	State       int32
 	mu          sync.Mutex
 	ResizeMu    sync.Mutex
+	conf        TenantConf // TODO use it
 }
 
 func (c *TenantDesc) GetCntOfPods() int {
@@ -239,16 +247,125 @@ func NewTenantDesc(name string, minPods int, maxPods int) *TenantDesc {
 	}
 }
 
+type PrewarmPoolOpResult struct {
+	failCnt int
+	lastTs  int64
+}
+
+type PrewarmPool struct {
+	mu         sync.Mutex
+	WarmedPods *TenantDesc
+	// CntToCreate atomic.Int32
+	cntOfPending          atomic.Int32
+	tenantLastOpResultMap map[string]*PrewarmPoolOpResult
+	SoftLimit             int // expected size of pool
+	// cntOfBooking chan *PodDesc
+	//
+	// cntOfBookingPending
+}
+
+func NewPrewarmPool(warmedPods *TenantDesc) *PrewarmPool {
+	return &PrewarmPool{
+		WarmedPods:            warmedPods,
+		cntOfPending:          atomic.Int32{},
+		tenantLastOpResultMap: make(map[string]*PrewarmPoolOpResult),
+		SoftLimit:             warmedPods.MaxCntOfPod,
+	}
+}
+
+func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
+	faliCntTotal := 0
+	p.mu.Lock()
+
+	now := time.Now().Unix()
+	for k, v := range p.tenantLastOpResultMap {
+		if v.lastTs > now-FailCntCheckTimeWindow {
+			faliCntTotal += v.failCnt
+		} else {
+			delete(p.tenantLastOpResultMap, k)
+		}
+	}
+
+	/// DO real pods resize!!!!
+	delta := faliCntTotal + p.SoftLimit - (int(p.cntOfPending.Load()) + p.WarmedPods.GetCntOfPods())
+	p.mu.Unlock()
+	// var ret *v1alpha1.CloneSet
+	var err error
+	if delta > 0 {
+		_, err = c.addNewPods(int32(delta))
+	} else if delta < 0 {
+		overCnt := p.WarmedPods.GetCntOfPods() - p.SoftLimit
+		if overCnt > 0 {
+			removeCnt := MinInt(-delta, overCnt)
+
+			podsToDel, _ := p.getWarmedPods("", removeCnt)
+			podNames := make([]string, 0, removeCnt)
+			for _, v := range podsToDel {
+				podNames = append(podNames, v.Name)
+			}
+			_, err = c.removePods(podNames)
+		}
+	}
+	if err != nil {
+		/// TODO handle error
+		log.Printf("[error][PrewarmPool.DoPodsWarm] error encountered! err:%v\n", err.Error())
+	}
+}
+
+func (p *PrewarmPool) getWarmedPods(tenantName string, cnt int) ([]*PodDesc, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	podnames := p.WarmedPods.GetPodNames()
+	podsToAssign := make([]*PodDesc, 0, cnt)
+	for _, k := range podnames {
+		if cnt > 0 {
+			v := p.WarmedPods.RemovePod(k, true)
+			if v != nil {
+				podsToAssign = append(podsToAssign, v)
+				cnt--
+			} else {
+				log.Println("[PrewarmPool::getWarmedPods] p.WarmedPods.RemovePod fail, return nil!")
+			}
+		} else {
+			//enough pods, break early
+			break
+		}
+	}
+	if tenantName != "" {
+		p.tenantLastOpResultMap[tenantName] = &PrewarmPoolOpResult{
+			failCnt: cnt,
+			lastTs:  time.Now().Unix(),
+		}
+	}
+	return podsToAssign, cnt
+}
+
+func (p *PrewarmPool) putWarmedPod(tenantName string, pod *PodDesc, isNewPod bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if isNewPod {
+		p.cntOfPending.Add(-1)
+	}
+	p.WarmedPods.SetPod(pod.Name, pod)
+	if tenantName != "" { // reset tenant's LastOpResult
+		p.tenantLastOpResultMap[tenantName] = &PrewarmPoolOpResult{
+			failCnt: 0,
+			lastTs:  time.Now().Unix(),
+		}
+	}
+}
+
 type AutoScaleMeta struct {
 	mu sync.Mutex
 	// Pod2tenant map[string]string
-	tenantMap   map[string]*TenantDesc
-	PodDescMap  map[string]*PodDesc
-	PrewarmPods *TenantDesc
-	pendingCnt  int32 // atomic
+	tenantMap  map[string]*TenantDesc
+	PodDescMap map[string]*PodDesc
+	//PrewarmPods *TenantDesc
+	*PrewarmPool
+	pendingCnt int32 // atomic
 
 	k8sCli    *kubernetes.Clientset
-	configMap *v1.ConfigMap //TODO expire entry  of removed pod
+	configMap *v1.ConfigMap //TODO expire entry of removed pod
 	cmMutex   sync.Mutex
 }
 
@@ -261,7 +378,7 @@ func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
 		// Pod2tenant: make(map[string]string),
 		tenantMap:   make(map[string]*TenantDesc),
 		PodDescMap:  make(map[string]*PodDesc),
-		PrewarmPods: NewTenantDesc("", 0, DefaultPrewarmPoolCap),
+		PrewarmPool: NewPrewarmPool(NewTenantDesc("", 0, DefaultPrewarmPoolCap)),
 		k8sCli:      client,
 	}
 	ret.loadTenants()
@@ -548,11 +665,12 @@ func (c *AutoScaleMeta) setConfigMapStateBatch(kvMap map[string]string) error {
 	return nil
 }
 
+// Used by controller
 func (c *AutoScaleMeta) addPreWarmFromPending(podName string, desc *PodDesc) {
 	log.Printf("[AutoScaleMeta]addPreWarmFromPending %v\n", podName)
 	c.pendingCnt-- // dec pending cnt
 
-	c.PrewarmPods.SetPod(podName, desc)
+	c.PrewarmPool.putWarmedPod("", desc, true)
 	desc.switchState(PodStateInit, PodStateUnassigned)
 	c.setConfigMapState(podName, CmRnPodStateUnassigned, "")
 }
@@ -573,6 +691,7 @@ func (c *AutoScaleMeta) GetRnPodStateAndTenantFromCM(podname string) (int, strin
 }
 
 // update pods when loadpods when boot and delta events during runtime
+// Used by controller
 func (c *AutoScaleMeta) UpdatePod(pod *v1.Pod) {
 	name := pod.Name
 	c.mu.Lock()
@@ -662,7 +781,7 @@ func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodD
 	if oldTenant != tenant {
 		var oldTenantDesc *TenantDesc
 		if oldTenant == "" {
-			oldTenantDesc = c.PrewarmPods
+			oldTenantDesc = c.PrewarmPool.WarmedPods
 		} else {
 			oldTenantDesc, ok = c.tenantMap[oldTenant]
 			if !ok {
@@ -680,7 +799,7 @@ func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodD
 	if tenant != "" {
 		newTenantDesc, ok = c.tenantMap[tenant]
 	} else {
-		newTenantDesc = c.PrewarmPods
+		newTenantDesc = c.PrewarmPool.WarmedPods
 		ok = true
 	}
 	if ok {
@@ -728,26 +847,27 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 		}
 	}
 
-	// TODO do we need add only MinPods if we want resume from pause
-	cnt := addCnt
-	podsToAssign := make([]*PodDesc, 0, addCnt)
+	// cnt := addCnt
 
-	podnames := c.PrewarmPods.GetPodNames()
+	podsToAssign, failCnt := c.PrewarmPool.getWarmedPods(tenant, addCnt)
+	// podsToAssign := make([]*PodDesc, 0, addCnt)
 
-	for _, k := range podnames {
-		if cnt > 0 {
-			v := c.PrewarmPods.RemovePod(k, true)
-			if v != nil {
-				podsToAssign = append(podsToAssign, v)
-				cnt--
-			} else {
-				log.Println("[AutoScaleMeta::addPodIntoTenant] c.PrewarmPods.RemovePod fail, return nil!")
-			}
-		} else {
-			//enough pods, break early
-			break
-		}
-	}
+	// podnames := c.PrewarmPods.GetPodNames()
+
+	// for _, k := range podnames {
+	// 	if cnt > 0 {
+	// 		v := c.PrewarmPods.RemovePod(k, true)
+	// 		if v != nil {
+	// 			podsToAssign = append(podsToAssign, v)
+	// 			cnt--
+	// 		} else {
+	// 			log.Println("[AutoScaleMeta::addPodIntoTenant] c.PrewarmPods.RemovePod fail, return nil!")
+	// 		}
+	// 	} else {
+	// 		//enough pods, break early
+	// 		break
+	// 	}
+	// }
 	for _, pod2assign := range podsToAssign {
 		log.Printf("[AutoScaleMeta::addPodIntoTenant] podsToAssign(name, ip): %v %v\n", pod2assign.Name, pod2assign.IP)
 	}
@@ -787,15 +907,15 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 	// undo failed works
 	c.mu.Lock()
 	for _, v := range undoList {
-		c.PrewarmPods.SetPod(v.Name, v)
-		cnt++
+		c.PrewarmPool.putWarmedPod(tenant, v, false) // TODO do we need treat failed pods as anomaly group, so that we handle them differently from normal ones.
+		failCnt++
 	}
 	if isResume {
 		tenantDesc.SyncStateResumed()
 	}
 	c.mu.Unlock()
 	c.setConfigMapStateBatch(statesDeltaMap)
-	return cnt
+	return failCnt
 }
 
 func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPause bool) int {
@@ -875,7 +995,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPaus
 		} else {
 			c.mu.Lock()
 			statesDeltaMap[v.Name] = ConfigMapPodStateStr(CmRnPodStateUnassigned, "")
-			c.PrewarmPods.SetPod(v.Name, v)
+			c.PrewarmPool.putWarmedPod(tenant, v, false)
 			c.mu.Unlock()
 		}
 	}
@@ -926,8 +1046,8 @@ func (c *AutoScaleMeta) AddPod4Test(podName string) bool {
 	// }
 	podDesc := &PodDesc{}
 	c.PodDescMap[podName] = podDesc
-
-	c.PrewarmPods.SetPod(podName, podDesc)
+	c.PrewarmPool.putWarmedPod("", podDesc, true)
+	// c.PrewarmPods.SetPod(podName, podDesc)
 	// c.PrewarmPods.pods[podName] = podDesc
 
 	return true

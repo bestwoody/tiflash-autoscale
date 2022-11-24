@@ -19,7 +19,11 @@ const (
 var HardCodeEnvTidbStatusAddr string
 var HardCodeEnvPdAddr string
 
-func AssignTenant(podIP string, tenantName string) (resp *supervisor.Result, err error) {
+func AssignTenantHardCodeArgs(podIP string, tenantName string) (resp *supervisor.Result, err error) {
+	return AssignTenant(podIP, tenantName, HardCodeEnvTidbStatusAddr, HardCodeEnvPdAddr)
+}
+
+func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr string) (resp *supervisor.Result, err error) {
 	defer func() {
 		if err != nil || (resp != nil && resp.HasErr) {
 			var err1, err2 string
@@ -46,7 +50,10 @@ func AssignTenant(podIP string, tenantName string) (resp *supervisor.Result, err
 		// Contact the server and print out its response.
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
-		r, err := c.AssignTenant(ctx, &supervisor.AssignRequest{TenantID: tenantName, TidbStatusAddr: HardCodeEnvTidbStatusAddr, PdAddr: HardCodeEnvPdAddr})
+		r, err :=
+			c.AssignTenant(
+				ctx,
+				&supervisor.AssignRequest{TenantID: tenantName, TidbStatusAddr: tidbStatusAddr, PdAddr: pdAddr})
 		if err != nil {
 			log.Printf("[error]AssignTenant fail: %v , podIP: %v \n", err, podIP)
 			return r, err

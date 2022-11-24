@@ -25,7 +25,7 @@ RUN GO111MODULE=on go mod download
 COPY . .
 
 # RUN make
-RUN GOOS=linux go build -o ./autoscale  tools/tiflash-autoscale/k8splayground.go 
+RUN GOOS=linux go build -o ./autoscale/k8splayground  tools/tiflash-autoscale/k8splayground.go 
 
 FROM alpine:3.5
 
