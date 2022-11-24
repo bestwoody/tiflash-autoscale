@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -495,6 +496,19 @@ func NewClusterManager() *ClusterManager {
 	return ret
 }
 
+func (c *ClusterManager) handleCloneSetApiError(err error, caller string) {
+	errStr := err.Error()
+	log.Printf("[error][%v]handleClonesetApiError, err: %+v\n", caller, errStr)
+	if strings.Contains(errStr, "please apply your changes to the latest version") {
+		ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
+		if err != nil {
+			log.Printf("[error][%v]handleClonesetApiError, failed to get latest version of cloneset, err: %+v\n", caller, err.Error())
+		} else {
+			c.CloneSet = ret
+		}
+	}
+}
+
 func (c *ClusterManager) addNewPods(delta int32) (*v1alpha1.CloneSet, error) {
 	c.muOfCloneSet.Lock()
 	defer c.muOfCloneSet.Unlock()
@@ -509,6 +523,7 @@ func (c *ClusterManager) addNewPods(delta int32) (*v1alpha1.CloneSet, error) {
 	c.CloneSet.Spec.Replicas = newReplicas
 	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
 	if err != nil {
+		c.handleCloneSetApiError(err, "ClusterManager.addNewPods")
 		return c.CloneSet, fmt.Errorf(err.Error())
 	} else {
 		c.CloneSet = ret.DeepCopy()
@@ -525,7 +540,8 @@ func (c *ClusterManager) removePods(pods2del []string) (*v1alpha1.CloneSet, erro
 	c.CloneSet.Spec.ScaleStrategy.PodsToDelete = pods2del
 	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
 	if err != nil {
-		log.Printf("[ClusterManager.removePods] failed, error: %v\n", err.Error())
+		// log.Printf("[ClusterManager.removePods] failed, error: %v\n", err.Error())
+		c.handleCloneSetApiError(err, "ClusterManager.removePods")
 		return c.CloneSet, fmt.Errorf(err.Error())
 	} else {
 		c.CloneSet = ret.DeepCopy()

@@ -292,6 +292,7 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 	// var ret *v1alpha1.CloneSet
 	var err error
 	if delta > 0 {
+		p.cntOfPending.Add(int32(delta))
 		_, err = c.addNewPods(int32(delta))
 	} else if delta < 0 {
 		overCnt := p.WarmedPods.GetCntOfPods() - p.SoftLimit
