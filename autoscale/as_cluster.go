@@ -343,19 +343,23 @@ func (c *ClusterManager) initK8sComponents() {
 					// pod anti affinity
 					Spec: v1.PodSpec{
 						NodeSelector: map[string]string{
-							"node.kubernetes.io/instance-type": "m6a.2xlarge", // TODO use a non-hack way to bind readnode pod to specific nodes
+							"tiflash.used-for-compute": "true",
+							// "node.kubernetes.io/instance-type": "m6a.2xlarge", // TODO use a non-hack way to bind readnode pod to specific nodes
 						},
 						Affinity: &v1.Affinity{
 							PodAntiAffinity: &v1.PodAntiAffinity{
-								RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+								PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{
 									{
-										TopologyKey: "kubernetes.io/hostname",
-										LabelSelector: &metav1.LabelSelector{
-											MatchExpressions: []metav1.LabelSelectorRequirement{
-												{
-													Key:      "app",
-													Operator: "In",
-													Values:   []string{c.CloneSetName, "autoscale"},
+										Weight: 100,
+										PodAffinityTerm: v1.PodAffinityTerm{
+											TopologyKey: "kubernetes.io/hostname",
+											LabelSelector: &metav1.LabelSelector{
+												MatchExpressions: []metav1.LabelSelectorRequirement{
+													{
+														Key:      "app",
+														Operator: "In",
+														Values:   []string{c.CloneSetName, "autoscale"},
+													},
 												},
 											},
 										},
@@ -409,7 +413,9 @@ func (c *ClusterManager) initK8sComponents() {
 			},
 		}
 		log.Println("create clonneSet")
+		c.AutoScaleMeta.PrewarmPool.cntOfPending.Add(*cloneSet.Spec.Replicas)
 		retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Create(context.TODO(), &cloneSet, metav1.CreateOptions{})
+
 	} else {
 		log.Println("get clonneSet")
 		retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
@@ -496,7 +502,8 @@ func NewClusterManager() *ClusterManager {
 	return ret
 }
 
-func (c *ClusterManager) handleCloneSetApiError(err error, caller string) {
+// return is successful to handle
+func (c *ClusterManager) handleCloneSetApiError(err error, caller string) bool {
 	errStr := err.Error()
 	log.Printf("[error][%v]handleClonesetApiError, err: %+v\n", caller, errStr)
 	if strings.Contains(errStr, "please apply your changes to the latest version") {
@@ -505,11 +512,13 @@ func (c *ClusterManager) handleCloneSetApiError(err error, caller string) {
 			log.Printf("[error][%v]handleClonesetApiError, failed to get latest version of cloneset, err: %+v\n", caller, err.Error())
 		} else {
 			c.CloneSet = ret
+			return true
 		}
 	}
+	return false
 }
 
-func (c *ClusterManager) addNewPods(delta int32) (*v1alpha1.CloneSet, error) {
+func (c *ClusterManager) addNewPods(delta int32, retryCnt int) (*v1alpha1.CloneSet, error) {
 	c.muOfCloneSet.Lock()
 	defer c.muOfCloneSet.Unlock()
 	// if delta <= 0 {
@@ -523,15 +532,21 @@ func (c *ClusterManager) addNewPods(delta int32) (*v1alpha1.CloneSet, error) {
 	c.CloneSet.Spec.Replicas = newReplicas
 	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
 	if err != nil {
-		c.handleCloneSetApiError(err, "ClusterManager.addNewPods")
+		log.Printf("[ClusterManager.addPods] failed, error: %v\n", err.Error())
+		if c.handleCloneSetApiError(err, "ClusterManager.addNewPods") {
+			if retryCnt > 0 {
+				return c.addNewPods(delta, retryCnt-1)
+			}
+		}
 		return c.CloneSet, fmt.Errorf(err.Error())
 	} else {
 		c.CloneSet = ret.DeepCopy()
 		return ret, nil
 	}
+
 }
 
-func (c *ClusterManager) removePods(pods2del []string) (*v1alpha1.CloneSet, error) {
+func (c *ClusterManager) removePods(pods2del []string, retryCnt int) (*v1alpha1.CloneSet, error) {
 	c.muOfCloneSet.Lock()
 	defer c.muOfCloneSet.Unlock()
 	newReplicas := new(int32)
@@ -540,8 +555,13 @@ func (c *ClusterManager) removePods(pods2del []string) (*v1alpha1.CloneSet, erro
 	c.CloneSet.Spec.ScaleStrategy.PodsToDelete = pods2del
 	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
 	if err != nil {
-		// log.Printf("[ClusterManager.removePods] failed, error: %v\n", err.Error())
-		c.handleCloneSetApiError(err, "ClusterManager.removePods")
+		// log.Printf("[error][ClusterManager.addNewPods] error encountered! err:%v\n", err.Error())
+		log.Printf("[ClusterManager.removePods] failed, error: %v\n", err.Error())
+		if c.handleCloneSetApiError(err, "ClusterManager.removePods") {
+			if retryCnt > 0 {
+				return c.removePods(pods2del, retryCnt-1)
+			}
+		}
 		return c.CloneSet, fmt.Errorf(err.Error())
 	} else {
 		c.CloneSet = ret.DeepCopy()

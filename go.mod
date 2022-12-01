@@ -1,6 +1,6 @@
 module github.com/tikv/pd
 
-go 1.18
+go 1.19
 
 require (
 	github.com/openkruise/kruise-api v1.2.0
