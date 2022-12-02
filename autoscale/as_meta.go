@@ -178,7 +178,7 @@ func (c *TenantDesc) GetPod(k string) (*PodDesc, bool) {
 	return v, ok
 }
 
-func (c *TenantDesc) RemovePod(k string, check bool) *PodDesc {
+func (c *TenantDesc) RemovePod(k string) *PodDesc {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v, ok := c.podMap[k]
@@ -355,7 +355,7 @@ func (p *PrewarmPool) getWarmedPods(tenantName string, cnt int) ([]*PodDesc, int
 	podsToAssign := make([]*PodDesc, 0, cnt)
 	for _, k := range podnames {
 		if cnt > 0 {
-			v := p.WarmedPods.RemovePod(k, true)
+			v := p.WarmedPods.RemovePod(k)
 			if v != nil {
 				podsToAssign = append(podsToAssign, v)
 				cnt--
@@ -826,7 +826,7 @@ func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodD
 			}
 		}
 		if oldTenantDesc != nil {
-			oldTenantDesc.RemovePod(podName, true)
+			oldTenantDesc.RemovePod(podName)
 		}
 	}
 
@@ -1122,7 +1122,7 @@ func (c *AutoScaleMeta) UpdateTenant4Test(podName string, newTenant string) bool
 			// return false
 		} else {
 
-			tenantDesc.RemovePod(podName, true)
+			tenantDesc.RemovePod(podName)
 			// podMap := tenantDesc.pods
 			// _, ok = podMap[podName]
 			// if ok {
