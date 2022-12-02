@@ -258,7 +258,7 @@ func NewTenantDescDefault(name string) *TenantDesc {
 		MinCntOfPod: DefaultMinCntOfPod,
 		MaxCntOfPod: DefaultMaxCntOfPod,
 		podMap:      make(map[string]*PodDesc),
-		podList:     make([]string, 0),
+		podList:     make([]*PodDesc, 0, 64),
 	}
 }
 
@@ -268,7 +268,7 @@ func NewTenantDesc(name string, minPods int, maxPods int) *TenantDesc {
 		MinCntOfPod: minPods,
 		MaxCntOfPod: maxPods,
 		podMap:      make(map[string]*PodDesc),
-		podList:     make([]string, 0),
+		podList:     make([]*PodDesc, 0, 64),
 	}
 }
 

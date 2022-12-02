@@ -348,18 +348,15 @@ func (c *ClusterManager) initK8sComponents() {
 						},
 						Affinity: &v1.Affinity{
 							PodAntiAffinity: &v1.PodAntiAffinity{
-								PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{
+								RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
 									{
-										Weight: 100,
-										PodAffinityTerm: v1.PodAffinityTerm{
-											TopologyKey: "kubernetes.io/hostname",
-											LabelSelector: &metav1.LabelSelector{
-												MatchExpressions: []metav1.LabelSelectorRequirement{
-													{
-														Key:      "app",
-														Operator: "In",
-														Values:   []string{c.CloneSetName, "autoscale"},
-													},
+										TopologyKey: "kubernetes.io/hostname",
+										LabelSelector: &metav1.LabelSelector{
+											MatchExpressions: []metav1.LabelSelectorRequirement{
+												{
+													Key:      "app",
+													Operator: "In",
+													Values:   []string{c.CloneSetName, "autoscale"},
 												},
 											},
 										},
