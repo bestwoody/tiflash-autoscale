@@ -18,7 +18,7 @@ kubectl create namespace tiflash-autoscale
 kubectl create clusterrolebinding add-on-cluster-admin --clusterrole=cluster-admin  --serviceaccount=tiflash-autoscale:default
 ```
 
-## Node label
+## Node label (注意：需要事先打上)
 ### Autoscaler所在的node label 
 ```shell
 "tiflash.used-for-autoscale": "true"
