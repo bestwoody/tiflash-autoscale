@@ -20,7 +20,7 @@ kubectl create clusterrolebinding add-on-cluster-admin --clusterrole=cluster-adm
 
 ## Node label (注意：需要事先打上)
 ### Autoscaler所在的node label 
-建议的node规格: "t3.xlarge"，固定数目1～2个。
+建议的node规格: "t3.xlarge"，固定数目1个。
 ```shell
 "tiflash.used-for-autoscale": "true"
 ```
