@@ -19,16 +19,16 @@ option go_package = "google.golang.org/grpc/examples/autoscale/autoscale";
 import "google/protobuf/timestamp.proto";
 package autoscale;
 
-message GetTopoRequest {
+message GetTopologyRequest {
   string tidbClusterID = 1;
 }
 
-message GetTopoResponse{
+message GetTopologyResponse{
   string tidbClusterID = 1;
   google.protobuf.Timestamp timestamp = 2;
-  repeated string topoList = 3;
+  repeated string topologyList = 3;
 }
 
 service AutoScale{
-  rpc GetTopo (GetTopoRequest) returns (GetTopoResponse){}
+  rpc GetTopology (GetTopologyRequest) returns (GetTopologyResponse){}
 }

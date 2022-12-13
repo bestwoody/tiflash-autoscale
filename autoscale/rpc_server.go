@@ -28,10 +28,13 @@ type server struct {
 	pb.UnimplementedAutoScaleServer
 }
 
-func (s *server) GetTopo(ctx context.Context, in *pb.GetTopoRequest) (*pb.GetTopoResponse, error) {
+func (s *server) GetTopo(ctx context.Context, in *pb.GetTopologyRequest) (*pb.GetTopologyResponse, error) {
 	ts := timestamppb.Now()
 
-	//TODO: call function to get topo
-	topoList := []string{"aaa,bbb"}
-	return &pb.GetTopoResponse{TidbClusterID: in.TidbClusterID, Timestamp: ts, TopoList: topoList}, nil
+	topoList := GetTopology(in.GetTidbClusterID())
+	return &pb.GetTopologyResponse{TidbClusterID: in.TidbClusterID, Timestamp: ts, TopologyList: topoList}, nil
+}
+
+func GetTopology(tidbClusterID string) []string {
+	return []string{"aaa,bbb"}
 }
