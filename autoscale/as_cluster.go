@@ -164,16 +164,17 @@ func (c *ClusterManager) analyzeMetrics() {
 			if tenant.GetState() != TenantStateResumed { // tenant not available
 				continue
 			}
+			tenant.TryToReloadConf()
 			cntOfPods := tenant.GetCntOfPods()
 			if cntOfPods < tenant.MinCntOfPod {
 				log.Printf("[analyzeMetrics] StateResume and cntOfPods < tenant.MinCntOfPo, add more pods, minCntOfPods:%v tenant: %v\n", tenant.MinCntOfPod, tenant.Name)
-				c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.MinCntOfPod, tenant.Name, c.tsContainer)
+				c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.conf.GetInitCntOfPod(), tenant.Name, c.tsContainer)
 			} else {
 				stats, podCpuMap := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "analyzeMetrics")
 				cpuusage := stats[0].Avg()
 
 				//Mock Metrics
-				CoreOfPod := DefaultCoreOfPod
+				// CoreOfPod := DefaultCoreOfPod
 
 				// Print Debug Info
 				curTs := time.Now().Unix()
@@ -185,8 +186,8 @@ func (c *ClusterManager) analyzeMetrics() {
 					// log.Printf("[ComputeStatisticsOfTenant] cpu usage: %v\n", cpuusage)
 					lastTs = curTs
 				}
-
-				bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, CoreOfPod)
+				minCpuUsageThreshold, maxCpuUsageThreshold := tenant.conf.GetLowerAndUpperCpuScaleThreshold()
+				bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, minCpuUsageThreshold, maxCpuUsageThreshold)
 				if bestPods != -1 && cntOfPods != bestPods {
 					log.Printf("[analyzeMetrics] resize pods, from %v to  %v , tenant: %v\n", tenant.GetCntOfPods(), bestPods, tenant.Name)
 					c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, bestPods, tenant.Name, c.tsContainer)

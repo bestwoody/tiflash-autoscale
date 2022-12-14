@@ -2,6 +2,7 @@ package autoscale
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math"
 	"strings"
@@ -150,7 +151,26 @@ type TenantDesc struct {
 	State       int32
 	mu          sync.Mutex
 	ResizeMu    sync.Mutex
-	conf        TenantConf // TODO use it
+
+	conf            ConfigOfComputeCluster  // copy from configManager, reload for each analyze loop
+	refOfLatestConf *ConfigOfComputeCluster /// TODO assign it // DO NOT directly read it ,since it is cocurrently being writed by other thread
+	// conf        TenantConf // TODO use it
+}
+
+func (c *TenantDesc) TryToReloadConf() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.refOfLatestConf.HasChanged(c.conf.LastModifiedTs) {
+		c.conf = c.refOfLatestConf.DeepCopy()
+		if (c.conf.MinCores%DefaultCoreOfPod != 0) || (c.conf.MaxCores%DefaultCoreOfPod != 0) {
+			panic(fmt.Sprintf("min/max cores not completedly divided by DefaultCoreOfPod, TidbCluster: %v ,isMinCoresErr: %v ,isMaxCoresErr: %v\n",
+				c.conf.ConfigOfTiDBCluster.Name, c.conf.MinCores%DefaultCoreOfPod != 0, c.conf.MaxCores%DefaultCoreOfPod != 0))
+		}
+		c.MinCntOfPod = c.conf.MinCores / DefaultCoreOfPod
+		c.MaxCntOfPod = c.conf.MaxCores / DefaultCoreOfPod
+		return true
+	}
+	return false
 }
 
 func (c *TenantDesc) GetCntOfPods() int {

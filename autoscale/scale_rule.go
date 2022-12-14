@@ -31,13 +31,14 @@ func ComputeBestPodsInRuleOfPM(tenantDesc *TenantDesc, cpuusage float64, coreOfP
 	}
 }
 
-func ComputeBestPodsInRuleOfCompute(tenantDesc *TenantDesc, cpuusage float64, coreOfPod int) (int, int /*delta*/) {
+func ComputeBestPodsInRuleOfCompute(tenantDesc *TenantDesc, cpuusage float64, cpuLowerlimit float64, cpuUpperLimit float64) (int, int /*delta*/) {
 	if tenantDesc == nil {
 		log.Println("[ComputeBestPodsInRuleOfCompute]tenantDesc == nil")
 		return -1, 0
 	}
-	lowerLimitOfGlobalPercentage := DefaultLowerLimit
-	upperlimitOfGlobalPercentage := DefaultUpperLimit
+	coreOfPod := DefaultCoreOfPod
+	lowerLimitOfGlobalPercentage := cpuLowerlimit
+	upperlimitOfGlobalPercentage := cpuUpperLimit
 	lowLimitOfCpuUsage := float64(coreOfPod) * lowerLimitOfGlobalPercentage
 	upLimitOfCpuUsage := float64(coreOfPod) * upperlimitOfGlobalPercentage
 	if cpuusage >= lowLimitOfCpuUsage && cpuusage <= upLimitOfCpuUsage {
