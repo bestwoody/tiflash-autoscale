@@ -11,6 +11,7 @@ import (
 
 var (
 	topicArnMap = make(map[string]string)
+	region      = "us-east-2"
 )
 
 type TopologyMessage struct {
@@ -51,7 +52,7 @@ func MakeTopic(c context.Context, api SNSCreateTopicAPI, input *sns.CreateTopicI
 }
 
 func CreateTopic(tidbClusterID string) error {
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		panic("configuration error, " + err.Error())
 	}
@@ -99,7 +100,7 @@ func PublishTopology(tidbClusterID string, timestamp string, topology []string) 
 	}
 	jsonTopo, err := json.Marshal(topologyMessage)
 	message := string(jsonTopo)
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		panic("configuration error, " + err.Error())
 	}
