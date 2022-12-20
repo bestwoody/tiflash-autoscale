@@ -3,17 +3,13 @@ package autoscale
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"log"
-	"sync"
-	"time"
 )
 
 type AwsSnsManager struct {
 	topicArnMap map[string]string
-	mu          sync.Mutex
 	client      *sns.Client
 }
 
@@ -68,14 +64,19 @@ func MakeTopic(c context.Context, api SNSCreateTopicAPI, input *sns.CreateTopicI
 	return api.CreateTopic(c, input)
 }
 
-func (c *AwsSnsManager) CreateTopic(tidbClusterID string) error {
-	c.mu.Lock()
-
+func (c *AwsSnsManager) TryToPublishTopology(tidbClusterID string, timestamp int64, topologyList []string) error {
 	_, exist := c.topicArnMap[tidbClusterID]
 	if exist {
-		c.mu.Unlock()
-		return c.PublishTopology(tidbClusterID)
+		return c.publishTopology(tidbClusterID, timestamp, topologyList)
 	}
+	err := c.createTopic(tidbClusterID)
+	if err != nil {
+		return err
+	}
+	return c.publishTopology(tidbClusterID, timestamp, topologyList)
+}
+
+func (c *AwsSnsManager) createTopic(tidbClusterID string) error {
 
 	topicName := "tiflash_cns_of_" + tidbClusterID
 	input := &sns.CreateTopicInput{
@@ -85,12 +86,10 @@ func (c *AwsSnsManager) CreateTopic(tidbClusterID string) error {
 	results, err := MakeTopic(context.TODO(), c.client, input)
 	if err != nil {
 		log.Printf("[error]Create topic failed, err: %+v\n", err.Error())
-		c.mu.Unlock()
 		return err
 	}
 	log.Printf("[CreateTopic]topic ARN: %v \n", *results.TopicArn)
 	c.topicArnMap[tidbClusterID] = *results.TopicArn
-	c.mu.Unlock()
 	return nil
 }
 
@@ -109,21 +108,14 @@ func PublishMessage(c context.Context, api SNSPublishAPI, input *sns.PublishInpu
 	return api.Publish(c, input)
 }
 
-func (c *AwsSnsManager) PublishTopology(tidbClusterID string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	now := time.Now()
-	ts := now.UnixNano()
-	topo := GetTopology(tidbClusterID)
+func (c *AwsSnsManager) publishTopology(tidbClusterID string, timestamp int64, topologyList []string) error {
+
 	topologyMessage := TopologyMessage{
 		TidbClusterID: tidbClusterID,
-		Timestamp:     ts,
-		TopologyList:  topo,
+		Timestamp:     timestamp,
+		TopologyList:  topologyList,
 	}
-	topicARN, exist := c.topicArnMap[tidbClusterID]
-	if !exist {
-		return errors.New("The topic of " + tidbClusterID + " has not registered")
-	}
+	topicARN := c.topicArnMap[tidbClusterID]
 	jsonTopo, err := json.Marshal(topologyMessage)
 	message := string(jsonTopo)
 
