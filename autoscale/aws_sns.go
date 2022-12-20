@@ -70,7 +70,12 @@ func MakeTopic(c context.Context, api SNSCreateTopicAPI, input *sns.CreateTopicI
 
 func (c *AwsSnsManager) CreateTopic(tidbClusterID string) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+
+	_, exist := c.topicArnMap[tidbClusterID]
+	if exist {
+		c.mu.Unlock()
+		return c.PublishTopology(tidbClusterID)
+	}
 
 	topicName := "tiflash_cns_of_" + tidbClusterID
 	input := &sns.CreateTopicInput{
@@ -80,10 +85,12 @@ func (c *AwsSnsManager) CreateTopic(tidbClusterID string) error {
 	results, err := MakeTopic(context.TODO(), c.client, input)
 	if err != nil {
 		log.Printf("[error]Create topic failed, err: %+v\n", err.Error())
+		c.mu.Unlock()
 		return err
 	}
 	log.Printf("[CreateTopic]topic ARN: %v \n", *results.TopicArn)
 	c.topicArnMap[tidbClusterID] = *results.TopicArn
+	c.mu.Unlock()
 	return nil
 }
 
