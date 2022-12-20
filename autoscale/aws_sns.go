@@ -6,10 +6,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"log"
+	"sync"
 )
 
 type AwsSnsManager struct {
-	topicArnMap map[string]string
+	topicArnMap sync.Map
 	client      *sns.Client
 }
 
@@ -43,8 +44,7 @@ func NewAwsSnsManager(region string) *AwsSnsManager {
 	}
 
 	ret := &AwsSnsManager{
-		topicArnMap: make(map[string]string),
-		client:      snsClient,
+		client: snsClient,
 	}
 	return ret
 }
@@ -65,19 +65,18 @@ func MakeTopic(c context.Context, api SNSCreateTopicAPI, input *sns.CreateTopicI
 }
 
 func (c *AwsSnsManager) TryToPublishTopology(tidbClusterID string, timestamp int64, topologyList []string) error {
-	_, exist := c.topicArnMap[tidbClusterID]
-	if exist {
-		return c.publishTopology(tidbClusterID, timestamp, topologyList)
+	topicArn, ok := c.topicArnMap.Load(tidbClusterID)
+	if ok {
+		return c.publishTopology(tidbClusterID, timestamp, topologyList, topicArn.(string))
 	}
-	err := c.createTopic(tidbClusterID)
+	topicArn, err := c.createTopic(tidbClusterID)
 	if err != nil {
 		return err
 	}
-	return c.publishTopology(tidbClusterID, timestamp, topologyList)
+	return c.publishTopology(tidbClusterID, timestamp, topologyList, topicArn.(string))
 }
 
-func (c *AwsSnsManager) createTopic(tidbClusterID string) error {
-
+func (c *AwsSnsManager) createTopic(tidbClusterID string) (string, error) {
 	topicName := "tiflash_cns_of_" + tidbClusterID
 	input := &sns.CreateTopicInput{
 		Name: &topicName,
@@ -86,11 +85,11 @@ func (c *AwsSnsManager) createTopic(tidbClusterID string) error {
 	results, err := MakeTopic(context.TODO(), c.client, input)
 	if err != nil {
 		log.Printf("[error]Create topic failed, err: %+v\n", err.Error())
-		return err
+		return "", err
 	}
 	log.Printf("[CreateTopic]topic ARN: %v \n", *results.TopicArn)
-	c.topicArnMap[tidbClusterID] = *results.TopicArn
-	return nil
+	c.topicArnMap.Store(tidbClusterID, *results.TopicArn)
+	return *results.TopicArn, nil
 }
 
 // PublishMessage publishes a message to an Amazon Simple Notification Service (Amazon SNS) topic
@@ -108,20 +107,19 @@ func PublishMessage(c context.Context, api SNSPublishAPI, input *sns.PublishInpu
 	return api.Publish(c, input)
 }
 
-func (c *AwsSnsManager) publishTopology(tidbClusterID string, timestamp int64, topologyList []string) error {
+func (c *AwsSnsManager) publishTopology(tidbClusterID string, timestamp int64, topologyList []string, topicArn string) error {
 
 	topologyMessage := TopologyMessage{
 		TidbClusterID: tidbClusterID,
 		Timestamp:     timestamp,
 		TopologyList:  topologyList,
 	}
-	topicARN := c.topicArnMap[tidbClusterID]
 	jsonTopo, err := json.Marshal(topologyMessage)
 	message := string(jsonTopo)
 
 	input := &sns.PublishInput{
 		Message:  &message,
-		TopicArn: &topicARN,
+		TopicArn: &topicArn,
 	}
 
 	result, err := PublishMessage(context.TODO(), c.client, input)
