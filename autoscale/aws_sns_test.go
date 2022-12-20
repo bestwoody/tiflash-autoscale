@@ -37,5 +37,6 @@ func TestCurrent(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		go test(awsSnsManager, i)
 	}
+	time.Sleep(20)
 
 }
