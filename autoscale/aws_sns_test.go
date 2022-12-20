@@ -1,6 +1,7 @@
 package autoscale
 
 import (
+	"log"
 	"testing"
 	"time"
 )
@@ -21,22 +22,18 @@ func TestAwsSns(t *testing.T) {
 }
 
 func TestCurrent(t *testing.T) {
-	jobQueue := make(chan string, 1000)
 	awsSnsManager := NewAwsSnsManager("us-east-2")
-
-	go func() {
-		for {
-			select {
-			case topic := <-jobQueue:
-				err := awsSnsManager.TryToPublishTopology(topic, 1, []string{"a"})
-				if err != nil {
-					t.Errorf("[error]Create topic failed, err: %+v\n", err.Error())
-					return
-				}
-			}
-		}
-	}()
 	for i := 0; i < 50; i++ {
-		jobQueue <- string(rune(i))
+		go func(i int) {
+			log.Printf("start func: %dn", i)
+			now := time.Now()
+			ts := now.UnixNano()
+			err := awsSnsManager.TryToPublishTopology(string(rune(i)), ts, []string{"a"})
+			if err != nil {
+				t.Errorf("[error]Create topic failed, err: %+v\n", err.Error())
+				return
+			}
+		}(i)
 	}
+
 }
