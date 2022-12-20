@@ -21,7 +21,7 @@ package autoscale
 import (
 	"context"
 	pb "github.com/tikv/pd/auto_scale_proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
+	"time"
 )
 
 type server struct {
@@ -29,7 +29,8 @@ type server struct {
 }
 
 func (s *server) GetTopo(ctx context.Context, in *pb.GetTopologyRequest) (*pb.GetTopologyResponse, error) {
-	ts := timestamppb.Now()
+	now := time.Now()
+	ts := now.UnixNano()
 
 	topoList := GetTopology(in.GetTidbClusterID())
 	return &pb.GetTopologyResponse{TidbClusterID: in.TidbClusterID, Timestamp: ts, TopologyList: topoList}, nil

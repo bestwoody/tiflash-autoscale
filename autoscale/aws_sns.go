@@ -7,17 +7,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"log"
+	"sync"
+	"time"
 )
 
-var (
-	topicArnMap = make(map[string]string)
-	region      = "us-east-2"
-)
+type AwsSnsManager struct {
+	topicArnMap map[string]string
+	mu          sync.Mutex
+	client      *sns.Client
+}
 
 type TopologyMessage struct {
 	TidbClusterID string
-	Timestamp     string
-	Topology      []string
+	Timestamp     int64
+	TopologyList  []string
 }
 
 // SNSCreateTopicAPI defines the interface for the CreateTopic function.
@@ -36,6 +39,20 @@ type SNSPublishAPI interface {
 		optFns ...func(*sns.Options)) (*sns.PublishOutput, error)
 }
 
+func NewAwsSnsManager(region string) *AwsSnsManager {
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
+	snsClient := sns.NewFromConfig(cfg)
+	if err != nil {
+		panic("configuration error, " + err.Error())
+	}
+
+	ret := &AwsSnsManager{
+		topicArnMap: make(map[string]string),
+		client:      snsClient,
+	}
+	return ret
+}
+
 // MakeTopic creates an Amazon Simple Notification Service (Amazon SNS) topic.
 // Inputs:
 //
@@ -51,25 +68,22 @@ func MakeTopic(c context.Context, api SNSCreateTopicAPI, input *sns.CreateTopicI
 	return api.CreateTopic(c, input)
 }
 
-func CreateTopic(tidbClusterID string) error {
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
-	if err != nil {
-		panic("configuration error, " + err.Error())
-	}
-	topicName := "tiflash_cns_of_" + tidbClusterID
-	client := sns.NewFromConfig(cfg)
+func (c *AwsSnsManager) CreateTopic(tidbClusterID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	topicName := "tiflash_cns_of_" + tidbClusterID
 	input := &sns.CreateTopicInput{
 		Name: &topicName,
 	}
 
-	results, err := MakeTopic(context.TODO(), client, input)
+	results, err := MakeTopic(context.TODO(), c.client, input)
 	if err != nil {
 		log.Printf("[error]Create topic failed, err: %+v\n", err.Error())
 		return err
 	}
 	log.Printf("[CreateTopic]topic ARN: %v \n", *results.TopicArn)
-	topicArnMap[tidbClusterID] = *results.TopicArn
+	c.topicArnMap[tidbClusterID] = *results.TopicArn
 	return nil
 }
 
@@ -88,31 +102,30 @@ func PublishMessage(c context.Context, api SNSPublishAPI, input *sns.PublishInpu
 	return api.Publish(c, input)
 }
 
-func PublishTopology(tidbClusterID string, timestamp string, topology []string) error {
+func (c *AwsSnsManager) PublishTopology(tidbClusterID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	ts := now.UnixNano()
+	topo := GetTopology(tidbClusterID)
 	topologyMessage := TopologyMessage{
 		TidbClusterID: tidbClusterID,
-		Timestamp:     timestamp,
-		Topology:      topology,
+		Timestamp:     ts,
+		TopologyList:  topo,
 	}
-	topicARN, exist := topicArnMap[tidbClusterID]
+	topicARN, exist := c.topicArnMap[tidbClusterID]
 	if !exist {
 		return errors.New("The topic of " + tidbClusterID + " has not registered")
 	}
 	jsonTopo, err := json.Marshal(topologyMessage)
 	message := string(jsonTopo)
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
-	if err != nil {
-		panic("configuration error, " + err.Error())
-	}
-
-	client := sns.NewFromConfig(cfg)
 
 	input := &sns.PublishInput{
 		Message:  &message,
 		TopicArn: &topicARN,
 	}
 
-	result, err := PublishMessage(context.TODO(), client, input)
+	result, err := PublishMessage(context.TODO(), c.client, input)
 	if err != nil {
 		log.Printf("[error]Publish topology failed, err: %+v\n", err.Error())
 		return err
