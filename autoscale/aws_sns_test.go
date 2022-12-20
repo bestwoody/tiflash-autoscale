@@ -2,6 +2,7 @@ package autoscale
 
 import (
 	"log"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -25,7 +26,7 @@ func test(awsSnsManager *AwsSnsManager, i int) {
 	log.Printf("start func: %d", i)
 	now := time.Now()
 	ts := now.UnixNano()
-	err := awsSnsManager.TryToPublishTopology(string(rune(i)), ts, []string{"a"})
+	err := awsSnsManager.TryToPublishTopology(strconv.Itoa(i), ts, []string{"a"})
 	if err != nil {
 		log.Printf("[error]Create topic failed, err: %+v\n", err.Error())
 		return
