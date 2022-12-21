@@ -4,6 +4,8 @@ go 1.19
 
 require (
 	github.com/openkruise/kruise-api v1.2.0
+	github.com/prometheus/client_golang v1.14.0
+	github.com/prometheus/common v0.37.0
 	google.golang.org/grpc v1.47.0
 	k8s.io/api v0.25.0
 	k8s.io/apimachinery v0.25.0
@@ -20,7 +22,9 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
+	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220609170525-579cf78fd858 // indirect

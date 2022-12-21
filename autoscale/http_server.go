@@ -1,10 +1,17 @@
 package autoscale
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
+	rest "k8s.io/client-go/rest"
 )
 
 type SetStateResult struct {
@@ -105,6 +112,65 @@ func GetStateServer(w http.ResponseWriter, req *http.Request) {
 	retJsonStr := string(retJson)
 	log.Printf("[http]resp of getstate, '%v' \n", retJsonStr)
 	io.WriteString(w, retJsonStr)
+}
+
+func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*PodDesc) (string, error) {
+	data, err := restCli.Get().AbsPath("/api/v1/nodes/minikube/proxy/metrics/cadvisor").DoRaw(context.TODO())
+	if err != nil {
+		return "", err
+	}
+	reader := bytes.NewReader(data)
+	// fmt.Println(string(data))
+	var parser expfmt.TextParser
+	metricFamilies, err := parser.TextToMetricFamilies(reader)
+	for _, v := range metricFamilies {
+
+		fmt.Println("###MF_NAME: " + *v.Name)
+		if *v.Name != "container_cpu_usage_seconds_total" {
+			continue
+		}
+		metrics := v.GetMetric()
+		for _, metric := range metrics {
+
+			labels := metric.Label
+			// fmt.Printf("##LABELS_LEN %v\n", (len(labels)))
+			extraLabelName := "tenant"
+			extraLabelVal := "T1"
+			metric.Label = append(metric.Label, &dto.LabelPair{
+				Name:  &extraLabelName,
+				Value: &extraLabelVal,
+			})
+			for _, label := range labels {
+				if *label.Name == "pod" && *label.Value != "" {
+					fmt.Println("pod: " + *label.Value)
+				}
+
+				// fmt.Println("##LABEL " + *label.Name + ": " + *label.Value)
+			}
+			// fmt.Println(metric.Label)
+		}
+		// fmt.Println(k + ":" + v.String())
+
+		out := bytes.NewBuffer(make([]byte, 0, 10240))
+		expfmt.MetricFamilyToText(out, v)
+		fmt.Println(out.String())
+
+	}
+}
+
+func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	node := req.FormValue("node")
+	if node == "" {
+		return
+	}
+	Cm4Http.AutoScaleMeta.k8sCli.RESTClient()
+	resp, err := proxyMetrics(node, Cm4Http.AutoScaleMeta.PodDescMap) //Cm4Http.AutoScaleMeta.PodDescMap
+	if err != nil {
+		log.Printf("[error]GetMetricsFromNode failed, node: %v err: %v\n", node, err.Error())
+		return
+	}
+	io.WriteString(w, resp)
 }
 
 func convertStateString(state int32) string {
