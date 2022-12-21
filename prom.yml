@@ -22,6 +22,8 @@ data:
         kubernetes_sd_configs:
         - role: node
         relabel_configs:
+        - source_labels:  ["__meta_kubernetes_node_label_tiflash_used_for_compute"]
+          action: keep
         - action: labelmap
           regex: __meta_kubernetes_node_label_(.+)
         - target_label: __address__

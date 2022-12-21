@@ -164,8 +164,10 @@ func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*Po
 			if podName != "" {
 				v, ok := podDescMap[podName]
 				if ok {
-					addLabel(metric, "podip", v.IP)
-					addLabel(metric, "tidbcluster", v.TenantName)
+					addLabel(metric, "metrics_topic", "cadvisor")
+					addLabel(metric, "metrics_source", "compute_pod")
+					addLabel(metric, "pod_ip", v.IP)
+					addLabel(metric, "tidb_cluster", v.TenantName)
 				}
 			}
 			// fmt.Println(metric.Label)
