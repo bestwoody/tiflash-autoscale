@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"math"
-	"os"
 	"path/filepath"
 	"time"
 
 	kruiseclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	"github.com/tikv/pd/autoscale"
 	supervisor "github.com/tikv/pd/supervisor_proto"
 	"google.golang.org/grpc"
@@ -208,13 +211,70 @@ func configmapPatchExample() {
 	}
 }
 
+func Int32Ptr(val int32) *int32 {
+	ret := new(int32)
+	*ret = int32(val)
+	return &val
+}
+
 func OpenkruiseTest() {
 	config, err := outsideConfig()
 	if err != nil {
 		panic(err.Error())
 	}
 	namespace := "default"
+
 	kruiseClient := kruiseclientset.NewForConfigOrDie(config)
+
+	// CloneSetName := "test-cloneset"
+	// cloneSet := v1alpha1.CloneSet{
+	// 	ObjectMeta: metav1.ObjectMeta{
+	// 		Name: CloneSetName,
+	// 		Labels: map[string]string{
+	// 			"app": CloneSetName,
+	// 		}},
+	// 	Spec: v1alpha1.CloneSetSpec{
+	// 		Replicas: Int32Ptr(int32(5)),
+	// 		Selector: &metav1.LabelSelector{
+	// 			MatchLabels: map[string]string{
+	// 				"app": CloneSetName,
+	// 			}},
+	// 		Template: v1.PodTemplateSpec{
+	// 			ObjectMeta: metav1.ObjectMeta{
+	// 				Labels: map[string]string{
+	// 					"app": CloneSetName,
+	// 				},
+	// 			},
+	// 			// pod anti affinity
+	// 			Spec: v1.PodSpec{
+	// 				// container
+	// 				Containers: []v1.Container{
+	// 					{
+	// 						// ENV
+	// 						Env: []v1.EnvVar{
+	// 							{
+	// 								Name: "POD_IP",
+	// 								ValueFrom: &v1.EnvVarSource{
+	// 									FieldRef: &v1.ObjectFieldSelector{
+	// 										FieldPath: "status.podIP",
+	// 									},
+	// 								},
+	// 							},
+	// 						},
+	// 						Name:            "supervisor",
+	// 						Image:           "bestwoody/supervisor:1",
+	// 						ImagePullPolicy: "Always",
+	// 					},
+	// 				},
+	// 			},
+	// 		},
+	// 	},
+	// }
+	// log.Println("create clonneSet")
+	// _, err = kruiseClient.AppsV1alpha1().CloneSets(namespace).Create(context.TODO(), &cloneSet, metav1.CreateOptions{})
+	// if err != nil {
+	// 	panic(err.Error())
+	// }
 	cloneSetList, err := kruiseClient.AppsV1alpha1().CloneSets(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		panic(err.Error())
@@ -222,6 +282,9 @@ func OpenkruiseTest() {
 
 	log.Printf("len of cloneSetList: %v \n", len(cloneSetList.Items))
 	for _, cloneSet := range cloneSetList.Items {
+		if cloneSet.Name != "test-cloneset" {
+			continue
+		}
 		log.Printf("cloneSet: %v \n", cloneSet)
 
 		newReplicas := new(int32)
@@ -229,12 +292,26 @@ func OpenkruiseTest() {
 		// Modify object, such as replicas or template
 		cloneSet.Spec.Replicas = newReplicas
 		// cloneSet.Spec.cluster
-		cloneSet.Spec.ScaleStrategy.PodsToDelete = append(cloneSet.Spec.ScaleStrategy.PodsToDelete, "sample-data-44mqr", "sample-data-ntcvp")
+		// cloneSet.Spec.ScaleStrategy.PodsToDelete = append(cloneSet.Spec.ScaleStrategy.PodsToDelete, "sample-data-44mqr", "sample-data-ntcvp")
 		// Update
 		// This might get conflict, should retry it
 		ret, err := kruiseClient.AppsV1alpha1().CloneSets(namespace).Update(context.TODO(), &cloneSet, metav1.UpdateOptions{})
 		if err != nil {
 			panic(err.Error())
+		} else {
+			log.Printf("changed cloneSet: %v \n", ret)
+		}
+
+		ret, err = kruiseClient.AppsV1alpha1().CloneSets(namespace).Update(context.TODO(), &cloneSet, metav1.UpdateOptions{})
+		if err != nil {
+			log.Printf("ERROR#1!!!!: %v \n", err.Error())
+		} else {
+			log.Printf("changed cloneSet: %v \n", ret)
+		}
+		log.Printf("ret cloneSet: %v \n", ret)
+		ret, err = kruiseClient.AppsV1alpha1().CloneSets(namespace).Update(context.TODO(), ret, metav1.UpdateOptions{})
+		if err != nil {
+			log.Printf("ERROR#2!!!!: %v \n", err.Error())
 		} else {
 			log.Printf("changed cloneSet: %v \n", ret)
 		}
@@ -382,27 +459,52 @@ func SupClient(podIP string, tenantName string) {
 }
 
 func main() {
-	// OpenkruiseTest()
-	// main2()
-	// configmapGetAndUpdateExample()
-	// configmapPlayGround()
-	// configmapPatchExample()
-
-	autoscale.HardCodeEnvPdAddr = os.Getenv("PD_ADDR")
-	autoscale.HardCodeEnvTidbStatusAddr = os.Getenv("TIDB_STATUS_ADDR")
-	envKubeRunMode := os.Getenv("KUBE_RUN_MODE")
-	if envKubeRunMode == "local" {
-		autoscale.OptionRunModeIsLocal = true
+	config, err := outsideConfig()
+	if err != nil {
+		panic(err.Error())
 	}
-	log.Printf("env.PD_ADDR: %v\n", autoscale.HardCodeEnvPdAddr)
-	log.Printf("env.TIDB_STATUS_ADDR: %v\n", autoscale.HardCodeEnvTidbStatusAddr)
-	cm := autoscale.NewClusterManager()
-	autoscale.Cm4Http = cm
+	// namespace := "default"
+	cli, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+	data, err := cli.CoreV1().RESTClient().Get().AbsPath("/api/v1/nodes/minikube/proxy/metrics/cadvisor").DoRaw(context.TODO())
+	reader := bytes.NewReader(data)
+	// fmt.Println(string(data))
+	var parser expfmt.TextParser
+	metricFamilies, err := parser.TextToMetricFamilies(reader)
+	for _, v := range metricFamilies {
 
-	// run http API server
-	go autoscale.RunAutoscaleHttpServer()
+		fmt.Println("###MF_NAME: " + *v.Name)
+		if *v.Name != "container_cpu_usage_seconds_total" {
+			continue
+		}
+		metrics := v.GetMetric()
+		for _, metric := range metrics {
 
-	// time.Sleep(3600 * time.Second)
-	cm.Wait()
-	cm.Shutdown()
+			labels := metric.Label
+			// fmt.Printf("##LABELS_LEN %v\n", (len(labels)))
+			extraLabelName := "tenant"
+			extraLabelVal := "T1"
+			metric.Label = append(metric.Label, &dto.LabelPair{
+				Name:  &extraLabelName,
+				Value: &extraLabelVal,
+			})
+			for _, label := range labels {
+				if *label.Name == "pod" && *label.Value != "" {
+					fmt.Println("pod: " + *label.Value)
+				}
+
+				// fmt.Println("##LABEL " + *label.Name + ": " + *label.Value)
+			}
+			// fmt.Println(metric.Label)
+		}
+		// fmt.Println(k + ":" + v.String())
+
+		out := bytes.NewBuffer(make([]byte, 0, 10240))
+		expfmt.MetricFamilyToText(out, v)
+		fmt.Println(out.String())
+	}
+
+	// OpenkruiseTest()
 }

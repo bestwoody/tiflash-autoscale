@@ -114,58 +114,79 @@ func GetStateServer(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, retJsonStr)
 }
 
+func addLabel(metric *dto.Metric, extraLabelName string, extraLabelVal string) {
+	metric.Label = append(metric.Label, &dto.LabelPair{
+		Name:  &extraLabelName,
+		Value: &extraLabelVal,
+	})
+}
+
 func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*PodDesc) (string, error) {
-	data, err := restCli.Get().AbsPath("/api/v1/nodes/minikube/proxy/metrics/cadvisor").DoRaw(context.TODO())
+	data, err := restCli.Get().AbsPath(fmt.Sprintf("/api/v1/nodes/%v/proxy/metrics/cadvisor", node)).DoRaw(context.TODO())
 	if err != nil {
 		return "", err
 	}
 	reader := bytes.NewReader(data)
 	// fmt.Println(string(data))
+	out := bytes.NewBuffer(make([]byte, 0, 102400))
 	var parser expfmt.TextParser
 	metricFamilies, err := parser.TextToMetricFamilies(reader)
+	if err != nil {
+		return "", err
+	}
 	for _, v := range metricFamilies {
 
-		fmt.Println("###MF_NAME: " + *v.Name)
-		if *v.Name != "container_cpu_usage_seconds_total" {
-			continue
-		}
-		metrics := v.GetMetric()
-		for _, metric := range metrics {
+		// fmt.Println("###MF_NAME: " + *v.Name)
+		// if *v.Name != "container_cpu_usage_seconds_total" {
+		// 	continue
+		// }
+		// metrics :=
+		for _, metric := range v.GetMetric() {
 
 			labels := metric.Label
 			// fmt.Printf("##LABELS_LEN %v\n", (len(labels)))
-			extraLabelName := "tenant"
-			extraLabelVal := "T1"
-			metric.Label = append(metric.Label, &dto.LabelPair{
-				Name:  &extraLabelName,
-				Value: &extraLabelVal,
-			})
+
+			// extraLabelName := "tenant"
+			// extraLabelVal := "T1"
+			// metric.Label = append(metric.Label, &dto.LabelPair{
+			// 	Name:  &extraLabelName,
+			// 	Value: &extraLabelVal,
+			// })
+			podName := ""
 			for _, label := range labels {
 				if *label.Name == "pod" && *label.Value != "" {
-					fmt.Println("pod: " + *label.Value)
+					// fmt.Println("pod: " + *label.Value)
+					podName = *label.Value
 				}
 
 				// fmt.Println("##LABEL " + *label.Name + ": " + *label.Value)
 			}
+			if podName != "" {
+				v, ok := podDescMap[podName]
+				if ok {
+					addLabel(metric, "podip", v.IP)
+					addLabel(metric, "tidbcluster", v.TenantName)
+				}
+			}
 			// fmt.Println(metric.Label)
 		}
 		// fmt.Println(k + ":" + v.String())
-
-		out := bytes.NewBuffer(make([]byte, 0, 10240))
+		out.WriteString("\n")
 		expfmt.MetricFamilyToText(out, v)
-		fmt.Println(out.String())
-
+		// fmt.Println(out.String())
 	}
+	return out.String(), nil
 }
 
 func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	node := req.FormValue("node")
+	log.Printf("[info][http]GetMetricsFromNode, node:%v\n", node)
 	if node == "" {
 		return
 	}
-	Cm4Http.AutoScaleMeta.k8sCli.RESTClient()
-	resp, err := proxyMetrics(node, Cm4Http.AutoScaleMeta.PodDescMap) //Cm4Http.AutoScaleMeta.PodDescMap
+
+	resp, err := proxyMetrics(Cm4Http.AutoScaleMeta.k8sCli.RESTClient(), node, Cm4Http.AutoScaleMeta.CopyPodDescMap()) //Cm4Http.AutoScaleMeta.PodDescMap
 	if err != nil {
 		log.Printf("[error]GetMetricsFromNode failed, node: %v err: %v\n", node, err.Error())
 		return
@@ -194,6 +215,7 @@ func RunAutoscaleHttpServer() {
 
 	http.HandleFunc("/setstate", SetStateServer)
 	http.HandleFunc("/getstate", GetStateServer)
+	http.HandleFunc("/metrics", GetMetricsFromNode)
 	log.Printf("[HTTP]ListenAndServe 8081")
 	err := http.ListenAndServe(":8081", nil)
 	if err != nil {

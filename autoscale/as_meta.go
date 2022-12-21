@@ -151,7 +151,7 @@ type TenantDesc struct {
 	mu          sync.Mutex
 	ResizeMu    sync.Mutex
 
-	conf            ConfigOfComputeCluster  // copy from configManager, reload for each analyze loop
+	conf            ConfigOfComputeCluster  /// TODO copy from configManager, reload for each analyze loop
 	refOfLatestConf *ConfigOfComputeCluster /// TODO assign it // DO NOT directly read it ,since it is cocurrently being writed by other thread
 	// conf        TenantConf // TODO use it
 }
@@ -290,6 +290,19 @@ func NewTenantDesc(name string, minPods int, maxPods int) *TenantDesc {
 		MaxCntOfPod: maxPods,
 		podMap:      make(map[string]*PodDesc),
 		podList:     make([]*PodDesc, 0, 64),
+		conf: ConfigOfComputeCluster{
+			Disabled:                 false, ///TODO  disable or not defualt?
+			AutoPauseIntervalSeconds: 300,   // 5min defualt
+			MinCores:                 minPods * DefaultCoreOfPod,
+			MaxCores:                 maxPods * DefaultCoreOfPod,
+			InitCores:                minPods * DefaultCoreOfPod,
+			WindowSeconds:            300,
+			CpuScaleRules:            nil,
+			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
+				Name: name,
+			},
+			LastModifiedTs: 0,
+		},
 	}
 }
 
@@ -449,6 +462,17 @@ func (c *AutoScaleMeta) loadTenants() {
 	c.SetupTenant("t1", 1, 4)
 	log.Printf("loadTenant, SetupTenant(t1, 1, 4)\n")
 	/// TODO load tenants from config of control panel
+}
+
+func (c *AutoScaleMeta) CopyPodDescMap() map[string]*PodDesc {
+	c.mu.Lock()
+	ret := make(map[string]*PodDesc, len(c.PodDescMap))
+
+	for k, v := range c.PodDescMap {
+		ret[k] = v
+	}
+	c.mu.Unlock()
+	return ret
 }
 
 func (c *AutoScaleMeta) ScanStateOfPods() {

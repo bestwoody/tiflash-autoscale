@@ -26,6 +26,8 @@ import (
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
+var OptionRunModeIsLocal = false
+
 func outsideConfig() (*restclient.Config, error) {
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
@@ -303,6 +305,29 @@ func (c *ClusterManager) loadPods() string {
 	return resVer
 }
 
+func (c *ClusterManager) getComputePodAntiAffinity() *v1.PodAntiAffinity {
+	if OptionRunModeIsLocal {
+		return nil
+	} else {
+		return &v1.PodAntiAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+				{
+					TopologyKey: "kubernetes.io/hostname",
+					LabelSelector: &metav1.LabelSelector{
+						MatchExpressions: []metav1.LabelSelectorRequirement{
+							{
+								Key:      "app",
+								Operator: "In",
+								Values:   []string{c.CloneSetName, "autoscale"},
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+}
+
 // TODO load existed pods
 func (c *ClusterManager) initK8sComponents() {
 	// create cloneset if not exist
@@ -348,22 +373,7 @@ func (c *ClusterManager) initK8sComponents() {
 							// "node.kubernetes.io/instance-type": "m6a.2xlarge", // TODO use a non-hack way to bind readnode pod to specific nodes
 						},
 						Affinity: &v1.Affinity{
-							PodAntiAffinity: &v1.PodAntiAffinity{
-								RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
-									{
-										TopologyKey: "kubernetes.io/hostname",
-										LabelSelector: &metav1.LabelSelector{
-											MatchExpressions: []metav1.LabelSelectorRequirement{
-												{
-													Key:      "app",
-													Operator: "In",
-													Values:   []string{c.CloneSetName, "autoscale"},
-												},
-											},
-										},
-									},
-								},
-							},
+							PodAntiAffinity: c.getComputePodAntiAffinity(),
 						},
 						// container
 						Containers: []v1.Container{

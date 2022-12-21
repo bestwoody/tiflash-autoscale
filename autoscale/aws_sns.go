@@ -3,10 +3,11 @@ package autoscale
 import (
 	"context"
 	"encoding/json"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"log"
 	"sync"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 )
 
 type AwsSnsManager struct {
@@ -36,17 +37,17 @@ type SNSPublishAPI interface {
 		optFns ...func(*sns.Options)) (*sns.PublishOutput, error)
 }
 
-func NewAwsSnsManager(region string) *AwsSnsManager {
+func NewAwsSnsManager(region string) (*AwsSnsManager, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	snsClient := sns.NewFromConfig(cfg)
 	if err != nil {
-		panic("configuration error, " + err.Error())
+		return nil, err
 	}
 
 	ret := &AwsSnsManager{
 		client: snsClient,
 	}
-	return ret
+	return ret, nil
 }
 
 // MakeTopic creates an Amazon Simple Notification Service (Amazon SNS) topic.

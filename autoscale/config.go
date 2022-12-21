@@ -19,6 +19,7 @@ type ConfigOfComputeCluster struct {
 	WindowSeconds            int                  // triger when modified: re-range timeseries of metric cpu/mem...
 	CpuScaleRules            *CustomScaleRule     // triger when modified: reload config before next analyze loop
 	ConfigOfTiDBCluster      *ConfigOfTiDBCluster // triger when modified: instantly reload compute pod's config  TODO handle version change case
+	LastModifiedTs           int64
 }
 
 func (c *ConfigOfComputeCluster) GetInitCntOfPod() int {
@@ -34,21 +35,20 @@ func (c *ConfigOfComputeCluster) GetLowerAndUpperCpuScaleThreshold() (float64, f
 	if c.CpuScaleRules != nil {
 		return float64(c.CpuScaleRules.Threashold.Min) / 100.0, float64(c.CpuScaleRules.Threashold.Max) / 100.0
 	} else {
-		log.Printf("[error][ConfigOfComputeCluster]invalid LowerAndUpperCpuScaleThreshold, TiDbCluster: %v CpuRuleInfo min:%v max:%v \n", c.ConfigOfTiDBCluster.Name, c.CpuScaleRules.Threashold.Min, c.CpuScaleRules.Threashold.Max)
+		log.Printf("[warn][ConfigOfComputeCluster]CpuScaleRules is nil, TiDbCluster: %v \n", c.ConfigOfTiDBCluster.Name)
 		return DefaultLowerLimit, DefaultUpperLimit
 	}
 }
 
 type ConfigOfComputeClusterHolder struct {
-	Config         ConfigOfComputeCluster
-	mu             sync.Mutex
-	LastModifiedTs int64
+	Config ConfigOfComputeCluster
+	mu     sync.Mutex
 }
 
 func (c *ConfigOfComputeClusterHolder) HasChanged(oldTs int64) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.LastModifiedTs > oldTs
+	return c.Config.LastModifiedTs > oldTs
 }
 
 func (c *ConfigOfComputeClusterHolder) DeepCopy() ConfigOfComputeCluster {
