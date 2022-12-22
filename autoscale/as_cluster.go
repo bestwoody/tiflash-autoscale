@@ -173,7 +173,9 @@ func (c *ClusterManager) analyzeMetrics() {
 			if cntOfPods < tenant.MinCntOfPod {
 				log.Printf("[analyzeMetrics] StateResume and cntOfPods < tenant.MinCntOfPo, add more pods, minCntOfPods:%v tenant: %v\n", tenant.MinCntOfPod, tenant.Name)
 				c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.conf.GetInitCntOfPod(), tenant.Name, c.tsContainer)
-				c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
+				if c.SnsManager != nil {
+					c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
+				}
 			} else {
 				stats, podCpuMap := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "analyzeMetrics")
 				cpuusage := stats[0].Avg()
@@ -196,7 +198,9 @@ func (c *ClusterManager) analyzeMetrics() {
 				if bestPods != -1 && cntOfPods != bestPods {
 					log.Printf("[analyzeMetrics] resize pods, from %v to  %v , tenant: %v\n", tenant.GetCntOfPods(), bestPods, tenant.Name)
 					c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, bestPods, tenant.Name, c.tsContainer)
-					c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
+					if c.SnsManager != nil {
+						c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
+					}
 				} else {
 					// log.Printf("[analyzeMetrics] pods unchanged cnt:%v, bestCnt:%v, tenant:%v \n", tenant.GetCntOfPods(), bestPods, tenant.Name)
 				}
@@ -508,7 +512,7 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 		CloneSetName:  "readnode",
 		SnsManager:    snsManager,
 		AutoScaleMeta: NewAutoScaleMeta(k8sConfig),
-		tsContainer:   NewTimeSeriesContainer(4),
+		tsContainer:   NewTimeSeriesContainer(DefaultCapOfSeries),
 		lstTsMap:      make(map[string]int64),
 
 		K8sCli:     K8sCli,

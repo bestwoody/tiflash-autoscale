@@ -55,7 +55,7 @@ type SimpleTimeSeries struct {
 	Statistics []AvgSigma
 	// min_time   int64
 	max_time int64
-	// cap    int
+	cap      int // cap = [tenant's scale_interval] / step
 }
 
 func (c *SimpleTimeSeries) Reset() {
@@ -170,14 +170,14 @@ type StatsOfTimeSeries struct {
 
 type TimeSeriesContainer struct {
 	seriesMap          map[string]*SimpleTimeSeries
-	cap_of_each_series int
+	defaultCapOfSeries int
 	mu                 sync.Mutex
 }
 
-func NewTimeSeriesContainer(cap_of_each_series int) *TimeSeriesContainer {
+func NewTimeSeriesContainer(defaultCapOfSeries int) *TimeSeriesContainer {
 	return &TimeSeriesContainer{
 		seriesMap:          make(map[string]*SimpleTimeSeries),
-		cap_of_each_series: cap_of_each_series}
+		defaultCapOfSeries: defaultCapOfSeries}
 }
 
 func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string) []AvgSigma {
@@ -242,7 +242,7 @@ func (cur *SimpleTimeSeries) getMinMaxTime() (int64, int64) {
 	}
 }
 
-func (cur *SimpleTimeSeries) append(time int64, values []float64, cap int) {
+func (cur *SimpleTimeSeries) append(time int64, values []float64) {
 	cur.series.PushBack(
 		&TimeValues{
 			time:   time,
@@ -254,7 +254,7 @@ func (cur *SimpleTimeSeries) append(time int64, values []float64, cap int) {
 		cur.max_time = Max(cur.max_time, time)
 	}
 	Add(cur.Statistics, values)
-	for cur.series.Len() > cap {
+	for cur.series.Len() > cur.cap {
 		Sub(cur.Statistics, cur.series.Front().Value.(*TimeValues).values)
 		cur.series.Remove(cur.series.Front())
 	}
@@ -268,8 +268,9 @@ func (cur *TimeSeriesContainer) Insert(key string, time int64, values []float64)
 		val = &SimpleTimeSeries{
 			series:     list.New(),
 			Statistics: make([]AvgSigma, CapacityOfStaticsAvgSigma),
+			cap:        cur.defaultCapOfSeries,
 		}
 		cur.seriesMap[key] = val
 	}
-	val.append(time, values, cur.cap_of_each_series)
+	val.append(time, values)
 }

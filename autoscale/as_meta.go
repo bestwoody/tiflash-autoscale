@@ -271,6 +271,8 @@ const (
 	DefaultUpperLimit         = 0.8
 	DefaultPrewarmPoolCap     = 1
 	CapacityOfStaticsAvgSigma = 6
+	DefaultCapOfSeries        = 30 // default scale interval: 5min. 30 * MetricResolutionSeconds(10s) = 300s (5min)
+	MetricResolutionSeconds   = 10 // metric step: 10s
 )
 
 func NewTenantDescDefault(name string) *TenantDesc {
