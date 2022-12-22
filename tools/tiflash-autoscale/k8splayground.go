@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	kruiseclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
@@ -381,6 +382,14 @@ func SupClient(podIP string, tenantName string) {
 	log.Printf("Greeting: %s", r.GetTenantID())
 }
 
+const (
+	EnvKeyPdAddr         = "PD_ADDR"
+	EnvKeyTidbStatusAddr = "TIDB_STATUS_ADDR"
+	EnvKeyKubeRunMode    = "TIFLASH_AS_KUBE_RUN_MODE"
+	EnvKeyEnableSns      = "TIFLASH_AS_ENABLE_SNS"
+	EnvKeyRegion         = "TIFLASH_AS_REGION"
+)
+
 func main() {
 	// OpenkruiseTest()
 	// main2()
@@ -388,15 +397,26 @@ func main() {
 	// configmapPlayGround()
 	// configmapPatchExample()
 
-	autoscale.HardCodeEnvPdAddr = os.Getenv("PD_ADDR")
-	autoscale.HardCodeEnvTidbStatusAddr = os.Getenv("TIDB_STATUS_ADDR")
-	envKubeRunMode := os.Getenv("KUBE_RUN_MODE")
+	log.Printf("env.%v: %v\n", EnvKeyPdAddr, os.Getenv(EnvKeyPdAddr))
+	log.Printf("env.%v: %v\n", EnvKeyTidbStatusAddr, os.Getenv(EnvKeyTidbStatusAddr))
+	log.Printf("env.%v: %v\n", EnvKeyKubeRunMode, os.Getenv(EnvKeyKubeRunMode))
+	log.Printf("env.%v: %v\n", EnvKeyEnableSns, os.Getenv(EnvKeyEnableSns))
+	log.Printf("env.%v: %v\n", EnvKeyRegion, os.Getenv(EnvKeyRegion))
+
+	autoscale.HardCodeEnvPdAddr = os.Getenv(EnvKeyPdAddr)
+	autoscale.HardCodeEnvTidbStatusAddr = os.Getenv(EnvKeyTidbStatusAddr)
+	envKubeRunMode := os.Getenv(EnvKeyKubeRunMode)
 	if envKubeRunMode == "local" {
 		autoscale.OptionRunModeIsLocal = true
 	}
-	log.Printf("env.PD_ADDR: %v\n", autoscale.HardCodeEnvPdAddr)
-	log.Printf("env.TIDB_STATUS_ADDR: %v\n", autoscale.HardCodeEnvTidbStatusAddr)
-	cm := autoscale.NewClusterManager()
+	autoscale.EnvRegion = os.Getenv(EnvKeyRegion)
+	isSnsEnabled := true
+	envEnableSns := os.Getenv(EnvKeyEnableSns)
+	if strings.ToLower(envEnableSns) == "false" {
+		isSnsEnabled = false
+	}
+
+	cm := autoscale.NewClusterManager(autoscale.EnvRegion, isSnsEnabled)
 	autoscale.Cm4Http = cm
 
 	// run http API server

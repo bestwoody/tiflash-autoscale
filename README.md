@@ -30,6 +30,15 @@ kubectl create clusterrolebinding add-on-cluster-admin --clusterrole=cluster-adm
 "tiflash.used-for-compute": "true"
 ```
 
+## ENV 配置
+配置aws region： 用于sns
+```yaml
+    - name: TIFLASH_AS_ENABLE_SNS # whether to enable sns: default true, if enabled, TIFLASH_AS_REGION should be set
+        value: "true"
+    - name: TIFLASH_AS_REGION
+        value: "us-east-2"
+```
+
 ## 修改TiDB Cluster配置
 修改autoscale.yaml如下字段到正确的配置
 ```yaml

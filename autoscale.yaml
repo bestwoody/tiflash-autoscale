@@ -65,5 +65,9 @@ spec:
           value: "172.31.8.1:2379"
         - name: TIDB_STATUS_ADDR
           value: "172.31.7.1:4000"
-        - name: KUBE_RUN_MODE
+        - name: TIFLASH_AS_KUBE_RUN_MODE
           value: "local" #"local": minikube  others: normal k8s
+        - name: TIFLASH_AS_ENABLE_SNS # whether to enable sns: default true, if enabled, TIFLASH_AS_REGION should be assgined
+          value: "false"
+        - name: TIFLASH_AS_REGION
+          value: "us-east-2"

@@ -27,6 +27,7 @@ import (
 )
 
 var OptionRunModeIsLocal = false
+var EnvRegion string
 
 func outsideConfig() (*restclient.Config, error) {
 	var kubeconfig *string
@@ -54,6 +55,7 @@ func getK8sConfig() (*restclient.Config, error) {
 type ClusterManager struct {
 	Namespace     string
 	CloneSetName  string
+	SnsManager    *AwsSnsManager
 	AutoScaleMeta *AutoScaleMeta
 	K8sCli        *kubernetes.Clientset
 	MetricsCli    *metricsv.Clientset
@@ -171,6 +173,7 @@ func (c *ClusterManager) analyzeMetrics() {
 			if cntOfPods < tenant.MinCntOfPod {
 				log.Printf("[analyzeMetrics] StateResume and cntOfPods < tenant.MinCntOfPo, add more pods, minCntOfPods:%v tenant: %v\n", tenant.MinCntOfPod, tenant.Name)
 				c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.conf.GetInitCntOfPod(), tenant.Name, c.tsContainer)
+				c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
 			} else {
 				stats, podCpuMap := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "analyzeMetrics")
 				cpuusage := stats[0].Avg()
@@ -193,6 +196,7 @@ func (c *ClusterManager) analyzeMetrics() {
 				if bestPods != -1 && cntOfPods != bestPods {
 					log.Printf("[analyzeMetrics] resize pods, from %v to  %v , tenant: %v\n", tenant.GetCntOfPods(), bestPods, tenant.Name)
 					c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, bestPods, tenant.Name, c.tsContainer)
+					c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
 				} else {
 					// log.Printf("[analyzeMetrics] pods unchanged cnt:%v, bestCnt:%v, tenant:%v \n", tenant.GetCntOfPods(), bestPods, tenant.Name)
 				}
@@ -488,12 +492,21 @@ func initK8sEnv(Namespace string) (config *restclient.Config, K8sCli *kubernetes
 
 // podstat:   init---->prewarmed<--->ComputePod
 
-func NewClusterManager() *ClusterManager {
+func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 	namespace := "tiflash-autoscale"
 	k8sConfig, K8sCli, MetricsCli, Cli := initK8sEnv(namespace)
+	var snsManager *AwsSnsManager
+	var err error
+	if isSnsEnabled {
+		snsManager, err = NewAwsSnsManager(region)
+		if err != nil {
+			panic(err)
+		}
+	}
 	ret := &ClusterManager{
 		Namespace:     namespace,
 		CloneSetName:  "readnode",
+		SnsManager:    snsManager,
 		AutoScaleMeta: NewAutoScaleMeta(k8sConfig),
 		tsContainer:   NewTimeSeriesContainer(4),
 		lstTsMap:      make(map[string]int64),
