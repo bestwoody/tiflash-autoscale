@@ -116,6 +116,10 @@ func (c *AwsSnsManager) publishTopology(tidbClusterID string, timestamp int64, t
 		TopologyList:  topologyList,
 	}
 	jsonTopo, err := json.Marshal(topologyMessage)
+	if err != nil {
+		log.Printf("[error][AwsSnsManager]json.Marshal(topologyMessage) fail, TiDBCluster:%v err: %v\n", tidbClusterID, err.Error())
+		return err
+	}
 	message := string(jsonTopo)
 
 	input := &sns.PublishInput{
