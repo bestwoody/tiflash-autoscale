@@ -2,9 +2,15 @@ package autoscale
 
 import (
 	"container/list"
+	"context"
+	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/api"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 )
 
 func Max(a int64, b int64) int64 {
@@ -273,4 +279,38 @@ func (cur *TimeSeriesContainer) Insert(key string, time int64, values []float64)
 		cur.seriesMap[key] = val
 	}
 	val.append(time, values)
+}
+
+type PromClient struct {
+}
+
+func promplay() {
+	client, err := api.NewClient(api.Config{
+		Address: "http://as-prometheus.tiflash-autoscale.svc.cluster.local:16292",
+	})
+	if err != nil {
+		fmt.Printf("Error creating client: %v\n", err)
+		os.Exit(1)
+	}
+
+	v1api := v1.NewAPI(client)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result, warnings, err := v1api.Query(ctx, "up", time.Now(), v1.WithTimeout(5*time.Second))
+	if err != nil {
+		fmt.Printf("Error querying Prometheus: %v\n", err)
+		os.Exit(1)
+	}
+	if len(warnings) > 0 {
+		fmt.Printf("Warnings: %v\n", warnings)
+	}
+	fmt.Printf("Result:\n%v\n", result)
+}
+
+func RangeQueryCpuTimeSeriesOfPod(scaleIntervalSec int64, metricResolution int, podName string, timeseriesHolder *SimpleTimeSeries) {
+
+}
+
+func RangeQueryCpuTimeSeriesOfAllPods(scaleIntervalSec int64, metricResolution int, tsContainer *TimeSeriesContainer) {
+
 }
