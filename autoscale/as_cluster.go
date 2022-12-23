@@ -458,6 +458,14 @@ func (c *ClusterManager) initK8sComponents() {
 											},
 										},
 									},
+									{
+										Name: "POD_NAME",
+										ValueFrom: &v1.EnvVarSource{
+											FieldRef: &v1.ObjectFieldSelector{
+												FieldPath: "metadata.name",
+											},
+										},
+									},
 								},
 								Name:            "supervisor",
 								Image:           "bestwoody/supervisor:1",
