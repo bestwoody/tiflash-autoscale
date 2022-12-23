@@ -56,6 +56,7 @@ type ClusterManager struct {
 	Namespace     string
 	CloneSetName  string
 	SnsManager    *AwsSnsManager
+	PromClient    *PromClient
 	AutoScaleMeta *AutoScaleMeta
 	K8sCli        *kubernetes.Clientset
 	MetricsCli    *metricsv.Clientset
@@ -75,7 +76,7 @@ type ClusterManager struct {
 
 // TODO expire of removed Pod in tsContainer,lstTsMap
 
-func (c *ClusterManager) collectMetrics() {
+func (c *ClusterManager) collectMetricsFromMetricServer() {
 	defer c.wg.Done()
 	as_meta := c.AutoScaleMeta
 	lstTsMap := c.lstTsMap
@@ -95,9 +96,7 @@ func (c *ClusterManager) collectMetrics() {
 		}
 		mint := int64(math.MaxInt64)
 		maxt := int64(0)
-		// et := time.Now().UnixNano()
-		// log.Printf("[ClusterManager]collectMetrics loop, api cost: %v ns\n", et-st)
-		// pendLogStr := ""
+
 		for _, pod := range podMetricsList.Items {
 			lstTs, ok := lstTsMap[pod.Name]
 			if !ok || pod.Timestamp.Unix() > lstTs {
@@ -108,27 +107,76 @@ func (c *ClusterManager) collectMetrics() {
 					})
 				lstTsMap[pod.Name] = pod.Timestamp.Unix()
 
-				// if pod.Name == "web-0" {
-				// cur_serires := tsContainer.SeriesMap[pod.Name]
 				snapshot := tsContainer.GetSnapshotOfTimeSeries(pod.Name)
-				// mint, maxt := cur_serires.GetMinMaxTime()
+
 				hasNew = true
 				mint = Min(snapshot.MinTime, mint)
 				maxt = Max(snapshot.MaxTime, maxt)
-				// pendLogStr += fmt.Sprintf("[collectMetrics]%v mint,maxt: %v ~ %v statistics: cpu: %v %v mem: %v %v\n", pod.Name,
-				// 	snapshot.MinTime, snapshot.MaxTime,
-				// 	snapshot.AvgOfCpu,
-				// 	snapshot.SampleCntOfCpu,
-				// 	snapshot.AvgOfMem,
-				// 	snapshot.SampleCntOfMem,
-				// )
-				// log.Printf("[collectMetrics]%v mint,maxt: %v ~ %v statistics: cpu: %v %v mem: %v %v\n", pod.Name,
-				// 	snapshot.MinTime, snapshot.MaxTime,
-				// 	snapshot.AvgOfCpu,
-				// 	snapshot.SampleCntOfCpu,
-				// 	snapshot.AvgOfMem,
-				// 	snapshot.SampleCntOfMem,
-				// )
+
+			}
+
+		}
+
+		// just print tenant's avg metrics
+		if hasNew {
+			hasNew = false
+			tArr := c.AutoScaleMeta.GetTenantNames()
+			for _, tName := range tArr {
+				stats, _ := as_meta.ComputeStatisticsOfTenant(tName, tsContainer, "collectMetrics")
+				log.Printf("[collectMetrics]Tenant %v statistics: cpu: %v %v mem: %v %v time_range:%v~%v\n", tName,
+					stats[0].Avg(),
+					stats[0].Cnt(),
+					stats[1].Avg(),
+					stats[1].Cnt(),
+					mint, maxt,
+				)
+			}
+		}
+	}
+
+}
+
+func (c *ClusterManager) collectMetricsFromPromethues() {
+	defer c.wg.Done()
+	as_meta := c.AutoScaleMeta
+	lstTsMap := c.lstTsMap
+	tsContainer := c.tsContainer
+	hasNew := false
+	for {
+		time.Sleep(200 * time.Millisecond)
+		if atomic.LoadInt32(&c.shutdown) != 0 {
+			return
+		}
+		metricOfPods, err := c.PromClient.QueryCpu()
+		if err != nil {
+			continue
+		}
+		// labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": c.CloneSetName}}
+		// st := time.Now().UnixNano()
+		// podMetricsList, err := c.MetricsCli.MetricsV1beta1().PodMetricses(c.Namespace).List(
+		// context.TODO(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+		// if err != nil {
+		// panic(err.Error())
+		// }
+		mint := int64(math.MaxInt64)
+		maxt := int64(0)
+
+		for podName, metric := range metricOfPods {
+			lstTs, ok := lstTsMap[podName]
+			if !ok || metric.time > lstTs {
+				tsContainer.Insert(podName, metric.time,
+					[]float64{
+						metric.value,
+						0.0, //TODO remove this dummy mem metric
+					})
+				lstTsMap[podName] = metric.time
+
+				snapshot := tsContainer.GetSnapshotOfTimeSeries(podName)
+
+				hasNew = true
+				mint = Min(snapshot.MinTime, mint)
+				maxt = Max(snapshot.MaxTime, maxt)
+
 			}
 
 		}
@@ -507,12 +555,17 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 			panic(err)
 		}
 	}
+	promCli, err := NewPromClient()
+	if err != nil {
+		panic(err)
+	}
 	ret := &ClusterManager{
 		Namespace:     namespace,
 		CloneSetName:  "readnode",
 		SnsManager:    snsManager,
+		PromClient:    promCli,
 		AutoScaleMeta: NewAutoScaleMeta(k8sConfig),
-		tsContainer:   NewTimeSeriesContainer(DefaultCapOfSeries),
+		tsContainer:   NewTimeSeriesContainer(DefaultCapOfSeries, promCli),
 		lstTsMap:      make(map[string]int64),
 
 		K8sCli:     K8sCli,
@@ -522,7 +575,7 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 	ret.initK8sComponents()
 
 	ret.wg.Add(2)
-	go ret.collectMetrics()
+	go ret.collectMetricsFromPromethues() /// TODO valid same behaviour with metric server
 	go ret.analyzeMetrics()
 	return ret
 }

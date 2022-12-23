@@ -11,6 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/model"
 )
 
 func Max(a int64, b int64) int64 {
@@ -178,12 +179,15 @@ type TimeSeriesContainer struct {
 	seriesMap          map[string]*SimpleTimeSeries
 	defaultCapOfSeries int
 	mu                 sync.Mutex
+	promCli            *PromClient
 }
 
-func NewTimeSeriesContainer(defaultCapOfSeries int) *TimeSeriesContainer {
+func NewTimeSeriesContainer(defaultCapOfSeries int, promCli *PromClient) *TimeSeriesContainer {
 	return &TimeSeriesContainer{
 		seriesMap:          make(map[string]*SimpleTimeSeries),
-		defaultCapOfSeries: defaultCapOfSeries}
+		defaultCapOfSeries: defaultCapOfSeries,
+		promCli:            promCli,
+	}
 }
 
 func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string) []AvgSigma {
@@ -282,6 +286,18 @@ func (cur *TimeSeriesContainer) Insert(key string, time int64, values []float64)
 }
 
 type PromClient struct {
+	cli api.Client
+}
+
+func NewPromClient() (*PromClient, error) {
+	client, err := api.NewClient(api.Config{
+		Address: "http://localhost:16292",
+	})
+	if err != nil {
+		fmt.Printf("[error][PromClient] creating client: %v\n", err)
+		return nil, err
+	}
+	return &PromClient{cli: client}, nil
 }
 
 func promplay() {
@@ -307,10 +323,84 @@ func promplay() {
 	fmt.Printf("Result:\n%v\n", result)
 }
 
-func RangeQueryCpuTimeSeriesOfPod(scaleIntervalSec int64, metricResolution int, podName string, timeseriesHolder *SimpleTimeSeries) {
+// / TODO !!! we shoudn't use "group by pod" since this pod may served many tenants in the past
+func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Duration) {
+	// client, err := api.NewClient(api.Config{
+	// 	Address: "http://localhost:16292",
+	// })
+	// if err != nil {
+	// 	fmt.Printf("Error creating client: %v\n", err)
+	// 	os.Exit(1)
+	// }
 
+	v1api := v1.NewAPI(c.cli)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	r := v1.Range{
+		Start: time.Now().Add(-scaleInterval),
+		End:   time.Now(),
+		Step:  step,
+	}
+	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
+	result, warnings, err := v1api.QueryRange(ctx, "avg by(pod) (irate(container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]))", r, v1.WithTimeout(5*time.Second))
+	if err != nil {
+		fmt.Printf("Error querying Prometheus: %v\n", err)
+		os.Exit(1)
+	}
+	if len(warnings) > 0 {
+		fmt.Printf("Warnings: %v\n", warnings)
+	}
+	fmt.Printf("Result:\n%v\n", result)
+	// matrix := result.(model.Matrix)
+	// matrix.
 }
 
-func RangeQueryCpuTimeSeriesOfAllPods(scaleIntervalSec int64, metricResolution int, tsContainer *TimeSeriesContainer) {
+func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
+	// client, err := api.NewClient(api.Config{
+	// 	Address: "http://localhost:16292",
+	// })
+	// if err != nil {
+	// 	fmt.Printf("Error creating client: %v\n", err)
+	// 	os.Exit(1)
+	// }
 
+	v1api := v1.NewAPI(c.cli)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
+	if err != nil {
+		log.Printf("[error][PromClient] querying Prometheus error: %v\n", err)
+		return nil, err
+	}
+	if len(warnings) > 0 {
+		log.Printf("[warn][PromClient] Warnings: %v\n", warnings)
+	}
+	// fmt.Printf("Result:\n%v\n", result)
+	// matrix := result.(model.Matrix)
+	matrix := result.(model.Matrix)
+	ret := make(map[string]*TimeValPair)
+	if matrix == nil {
+		for _, sampleStream := range matrix {
+			podName := sampleStream.Metric["pod"]
+			// fmt.Printf("pod: %v\n", podName)
+			lenOfVals := len(sampleStream.Values)
+			if lenOfVals >= 2 {
+				last := sampleStream.Values[lenOfVals-1]
+				nextToLast := sampleStream.Values[lenOfVals-2]
+				rate := float64(last.Value-nextToLast.Value) / float64(last.Timestamp.Unix()-nextToLast.Timestamp.Unix())
+				v, ok := ret[string(podName)]
+
+				if !ok || (ok && last.Timestamp.Unix() > v.time) { // there many be many series for a same podName, since label may be different
+					ret[string(podName)] = &TimeValPair{
+						time:  last.Timestamp.Unix(),
+						value: rate,
+					}
+				}
+
+			} else {
+				log.Printf("[warn][Prom]no enough points, pod:%v\n", podName)
+			}
+		}
+	}
+	return ret, nil
 }
