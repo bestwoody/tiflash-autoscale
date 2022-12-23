@@ -15,13 +15,11 @@ import (
 	supervisor "github.com/tikv/pd/supervisor_proto"
 	"google.golang.org/grpc"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 	//
 	// Uncomment to load all auth plugins
 	// _ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -244,117 +242,117 @@ func OpenkruiseTest() {
 
 }
 
-func main2() {
-	// ctx := context.Background()
-	// config := ctrl.GetConfigOrDie()
+// func main2() {
+// 	// ctx := context.Background()
+// 	// config := ctrl.GetConfigOrDie()
 
-	config, err := outsideConfig()
+// 	config, err := outsideConfig()
 
-	// // creates the in-cluster config
-	// config, err := rest.InClusterConfig()
+// 	// // creates the in-cluster config
+// 	// config, err := rest.InClusterConfig()
 
-	if err != nil {
-		panic(err.Error())
-	}
-	tsContainer := autoscale.NewTimeSeriesContainer(5)
-	mclientset, err := metricsv.NewForConfig(config)
-	as_meta := autoscale.NewAutoScaleMeta(config)
-	as_meta.AddPod4Test("web-0")
-	as_meta.AddPod4Test("web-1")
-	as_meta.AddPod4Test("web-2")
-	as_meta.AddPod4Test("hello-node-7c7c59b7cb-6bsjg")
-	as_meta.SetupTenantWithDefaultArgs4Test("t1")
-	as_meta.SetupTenantWithDefaultArgs4Test("t2")
-	as_meta.UpdateTenant4Test("web-0", "t1")
-	as_meta.UpdateTenant4Test("web-1", "t1")
-	as_meta.UpdateTenant4Test("web-2", "t1")
-	as_meta.UpdateTenant4Test("hello-node-7c7c59b7cb-6bsjg", "t2")
-	// var lstTs int64
-	lstTsMap := make(map[string]int64)
-	hasNew := false
-	for {
-		podMetricsList, err := mclientset.MetricsV1beta1().PodMetricses("default").List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
+// 	if err != nil {
+// 		panic(err.Error())
+// 	}
+// 	tsContainer := autoscale.NewTimeSeriesContainer(5, nil)
+// 	mclientset, err := metricsv.NewForConfig(config)
+// 	as_meta := autoscale.NewAutoScaleMeta(config)
+// 	as_meta.AddPod4Test("web-0")
+// 	as_meta.AddPod4Test("web-1")
+// 	as_meta.AddPod4Test("web-2")
+// 	as_meta.AddPod4Test("hello-node-7c7c59b7cb-6bsjg")
+// 	as_meta.SetupTenantWithDefaultArgs4Test("t1")
+// 	as_meta.SetupTenantWithDefaultArgs4Test("t2")
+// 	as_meta.UpdateTenant4Test("web-0", "t1")
+// 	as_meta.UpdateTenant4Test("web-1", "t1")
+// 	as_meta.UpdateTenant4Test("web-2", "t1")
+// 	as_meta.UpdateTenant4Test("hello-node-7c7c59b7cb-6bsjg", "t2")
+// 	// var lstTs int64
+// 	lstTsMap := make(map[string]int64)
+// 	hasNew := false
+// 	for {
+// 		podMetricsList, err := mclientset.MetricsV1beta1().PodMetricses("default").List(context.TODO(), metav1.ListOptions{})
+// 		if err != nil {
+// 			panic(err.Error())
+// 		}
 
-		for _, pod := range podMetricsList.Items {
-			// if pod.Name == "web-0" {
-			// 	log.Printf("podmetrics: %v \n", pod)
-			// }
-			lstTs, ok := lstTsMap[pod.Name]
-			if !ok || pod.Timestamp.Unix() != lstTs {
-				tsContainer.Insert(pod.Name, pod.Timestamp.Unix(),
-					[]float64{
-						pod.Containers[0].Usage.Cpu().AsApproximateFloat64(),
-						pod.Containers[0].Usage.Memory().AsApproximateFloat64(),
-					})
-				lstTsMap[pod.Name] = pod.Timestamp.Unix()
+// 		for _, pod := range podMetricsList.Items {
+// 			// if pod.Name == "web-0" {
+// 			// 	log.Printf("podmetrics: %v \n", pod)
+// 			// }
+// 			lstTs, ok := lstTsMap[pod.Name]
+// 			if !ok || pod.Timestamp.Unix() != lstTs {
+// 				tsContainer.Insert(pod.Name, pod.Timestamp.Unix(),
+// 					[]float64{
+// 						pod.Containers[0].Usage.Cpu().AsApproximateFloat64(),
+// 						pod.Containers[0].Usage.Memory().AsApproximateFloat64(),
+// 					})
+// 				lstTsMap[pod.Name] = pod.Timestamp.Unix()
 
-				// if pod.Name == "web-0" {
-				snapshot := tsContainer.GetSnapshotOfTimeSeries(pod.Name)
-				// mint, maxt := cur_serires.GetMinMaxTime()
-				hasNew = true
-				log.Printf("%v mint,maxt: %v ~ %v\n", pod.Name, snapshot.MinTime, snapshot.MaxTime)
-				log.Printf("%v statistics: cpu: %v %v mem: %v %v\n", pod.Name,
-					snapshot.AvgOfCpu,
-					snapshot.SampleCntOfCpu,
-					snapshot.AvgOfMem,
-					snapshot.SampleCntOfMem,
-				)
-				// }
-			}
+// 				// if pod.Name == "web-0" {
+// 				snapshot := tsContainer.GetSnapshotOfTimeSeries(pod.Name)
+// 				// mint, maxt := cur_serires.GetMinMaxTime()
+// 				hasNew = true
+// 				log.Printf("%v mint,maxt: %v ~ %v\n", pod.Name, snapshot.MinTime, snapshot.MaxTime)
+// 				log.Printf("%v statistics: cpu: %v %v mem: %v %v\n", pod.Name,
+// 					snapshot.AvgOfCpu,
+// 					snapshot.SampleCntOfCpu,
+// 					snapshot.AvgOfMem,
+// 					snapshot.SampleCntOfMem,
+// 				)
+// 				// }
+// 			}
 
-		}
-		if hasNew {
-			hasNew = false
-			tArr := []string{"t1", "t2"}
-			for _, tName := range tArr {
-				stats1, _ := as_meta.ComputeStatisticsOfTenant(tName, tsContainer, "play")
-				log.Printf("[Tenant]%v statistics: cpu: %v %v mem: %v %v\n", tName,
-					stats1[0].Avg(),
-					stats1[0].Cnt(),
-					stats1[1].Avg(),
-					stats1[1].Cnt(),
-				)
-			}
-		}
-		// v, ok := as_meta.PodDescMap[]
-		// log.Printf("Podmetrics: %v \n", podMetricsList)
-	}
+// 		}
+// 		if hasNew {
+// 			hasNew = false
+// 			tArr := []string{"t1", "t2"}
+// 			for _, tName := range tArr {
+// 				stats1, _ := as_meta.ComputeStatisticsOfTenant(tName, tsContainer, "play")
+// 				log.Printf("[Tenant]%v statistics: cpu: %v %v mem: %v %v\n", tName,
+// 					stats1[0].Avg(),
+// 					stats1[0].Cnt(),
+// 					stats1[1].Avg(),
+// 					stats1[1].Cnt(),
+// 				)
+// 			}
+// 		}
+// 		// v, ok := as_meta.PodDescMap[]
+// 		// log.Printf("Podmetrics: %v \n", podMetricsList)
+// 	}
 
-	// creates the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	// clientset.AppsV1().
-	if err != nil {
-		panic(err.Error())
-	}
-	for {
-		// get pods in all the namespaces by omitting namespace
-		// Or specify namespace to get pods in particular namespace
-		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-		log.Printf("There are %d pods in the cluster\n", len(pods.Items))
+// 	// creates the clientset
+// 	clientset, err := kubernetes.NewForConfig(config)
+// 	// clientset.AppsV1().
+// 	if err != nil {
+// 		panic(err.Error())
+// 	}
+// 	for {
+// 		// get pods in all the namespaces by omitting namespace
+// 		// Or specify namespace to get pods in particular namespace
+// 		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+// 		if err != nil {
+// 			panic(err.Error())
+// 		}
+// 		log.Printf("There are %d pods in the cluster\n", len(pods.Items))
 
-		// Examples for error handling:
-		// - Use helper functions e.g. errors.IsNotFound()
-		// - And/or cast to StatusError and use its properties like e.g. ErrStatus.Message
-		_, err = clientset.CoreV1().Pods("default").Get(context.TODO(), "example-xxxxx", metav1.GetOptions{})
-		if errors.IsNotFound(err) {
-			log.Printf("Pod example-xxxxx not found in default namespace\n")
-		} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
-			log.Printf("Error getting pod %v\n", statusError.ErrStatus.Message)
-		} else if err != nil {
-			panic(err.Error())
-		} else {
-			log.Printf("Found example-xxxxx pod in default namespace\n")
-		}
+// 		// Examples for error handling:
+// 		// - Use helper functions e.g. errors.IsNotFound()
+// 		// - And/or cast to StatusError and use its properties like e.g. ErrStatus.Message
+// 		_, err = clientset.CoreV1().Pods("default").Get(context.TODO(), "example-xxxxx", metav1.GetOptions{})
+// 		if errors.IsNotFound(err) {
+// 			log.Printf("Pod example-xxxxx not found in default namespace\n")
+// 		} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
+// 			log.Printf("Error getting pod %v\n", statusError.ErrStatus.Message)
+// 		} else if err != nil {
+// 			panic(err.Error())
+// 		} else {
+// 			log.Printf("Found example-xxxxx pod in default namespace\n")
+// 		}
 
-		time.Sleep(10 * time.Second)
-	}
-}
+// 		time.Sleep(10 * time.Second)
+// 	}
+// }
 
 func MockComputeStatisticsOfTenant(ts int, coresOfPod int) float64 {
 	// ts := time.Now().Unix()

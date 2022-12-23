@@ -142,6 +142,7 @@ func (c *ClusterManager) collectMetricsFromPromethues() {
 	lstTsMap := c.lstTsMap
 	tsContainer := c.tsContainer
 	hasNew := false
+	///TODO init timeseries of pods via RangeQuery
 	for {
 		time.Sleep(200 * time.Millisecond)
 		if atomic.LoadInt32(&c.shutdown) != 0 {
@@ -356,6 +357,19 @@ func (c *ClusterManager) loadPods() string {
 	}
 	resVer := pods.ListMeta.ResourceVersion
 	for _, pod := range pods.Items {
+		// //!!!TEST BEGIN
+		// playLoadBytes := `
+		// {
+		// 	"metadata": {
+		// 		"labels": {
+		// 			"key1" : "value1",
+		// 			"key2" : "value2"
+		// 		}
+		// 	}
+		// }
+		// `
+		// c.K8sCli.CoreV1().Pods(c.Namespace).Patch(context.TODO(), pod.Name, k8stypes.StrategicMergePatchType, []byte(playLoadBytes), metav1.PatchOptions{})
+		// //!!!TEST END
 		c.AutoScaleMeta.UpdatePod(&pod)
 	}
 	return resVer
@@ -510,6 +524,10 @@ func (c *ClusterManager) initK8sComponents() {
 // 	log.Println("[ClusterManager] recoverStatesOfPods(): unimplement")
 // 	// c.AutoScaleMeta.recoverStatesOfPods()
 // }
+
+func playground(k8sCli *kubernetes.Clientset) {
+	// k8sCli.CoreV1().Namespaces("tiflash-autoscale").Patch()
+}
 
 func initK8sEnv(Namespace string) (config *restclient.Config, K8sCli *kubernetes.Clientset, MetricsCli *metricsv.Clientset, Cli *kruiseclientset.Clientset) {
 	config, err := getK8sConfig()

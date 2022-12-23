@@ -323,7 +323,9 @@ func promplay() {
 	fmt.Printf("Result:\n%v\n", result)
 }
 
-// / TODO !!! we shoudn't use "group by pod" since this pod may served many tenants in the past
+// / TODO !!! we shoudn't direct use the result of "group by pod" since this pod may served many tenants in the past,
+//
+//	we can cut off the other tenants history in the series
 func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Duration) {
 	// client, err := api.NewClient(api.Config{
 	// 	Address: "http://localhost:16292",
@@ -336,9 +338,10 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 	v1api := v1.NewAPI(c.cli)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	now := time.Now()
 	r := v1.Range{
-		Start: time.Now().Add(-scaleInterval),
-		End:   time.Now(),
+		Start: now.Add(-scaleInterval),
+		End:   now,
 		Step:  step,
 	}
 	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
@@ -355,6 +358,7 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 	// matrix.
 }
 
+// query recent 1m , and get latest two cumulative value, and compute delta of them
 func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	// client, err := api.NewClient(api.Config{
 	// 	Address: "http://localhost:16292",
