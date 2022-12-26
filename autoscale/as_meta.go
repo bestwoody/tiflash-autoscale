@@ -33,13 +33,39 @@ const (
 	FailCntCheckTimeWindow = 300 // 300s
 )
 
+// type TenantAssignInfo {
+
+// }
+
 type PodDesc struct {
-	TenantName string
-	Name       string
-	IP         string
-	State      int32      // 0: unassigned 1:assigned
-	mu         sync.Mutex /// TODO use it //TODO add pod level lock!!!
+	Name  string
+	IP    string
+	State int32 // 0: unassigned 1:assigned
+
+	TenantName        string
+	StartTimeOfAssign int64        //startTime of tenant's assignment
+	mu                sync.RWMutex /// TODO use it //TODO add pod level lock!!!
 	// pod        *v1.Pod
+}
+
+func (p *PodDesc) SetTenantInfo(tenantName string, startTimeOfAssgin int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.TenantName = tenantName
+	p.StartTimeOfAssign = startTimeOfAssgin
+}
+
+func (p *PodDesc) ClearTenantInfo() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.TenantName = ""
+	p.StartTimeOfAssign = time.Now().Unix()
+}
+
+func (p *PodDesc) GetTenantInfo() (string, int64) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.TenantName, p.StartTimeOfAssign
 }
 
 func GenMockConf() string {
@@ -189,7 +215,19 @@ func (c *TenantDesc) SetPod(k string, v *PodDesc) {
 	}
 
 	c.podMap[k] = v
-	v.TenantName = c.Name
+	v.TenantName = c.Name ///TODO use poddesc.mutex
+}
+
+func (c *TenantDesc) SetPodWithTenantInfo(k string, v *PodDesc, startTimeOfAssign int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.podMap[k]
+	if !ok {
+		c.podList = append(c.podList, v)
+	}
+
+	c.podMap[k] = v
+	v.SetTenantInfo(c.Name, startTimeOfAssign)
 }
 
 func (c *TenantDesc) GetPod(k string) (*PodDesc, bool) {
@@ -205,7 +243,7 @@ func (c *TenantDesc) RemovePod(k string) *PodDesc {
 	v, ok := c.podMap[k]
 	if ok {
 		delete(c.podMap, k)
-		v.TenantName = ""
+		v.ClearTenantInfo()
 		return v
 	} else {
 		return nil
@@ -222,7 +260,7 @@ func (c *TenantDesc) PopOnePod() *PodDesc {
 		if ok {
 			delete(c.podMap, curPod.Name)
 		}
-		curPod.TenantName = ""
+		curPod.ClearTenantInfo()
 		return curPod
 	} else {
 		return nil
@@ -420,8 +458,8 @@ func (p *PrewarmPool) putWarmedPod(tenantName string, pod *PodDesc, isNewPod boo
 			p.cntOfPending.Add(-1)
 		}
 	}
-	p.WarmedPods.SetPod(pod.Name, pod)
-	if tenantName != "" { // reset tenant's LastOpResult， since tenant returns pod back to pool, he has enough pods.
+	p.WarmedPods.SetPod(pod.Name, pod) // no need to set startTimeOfAssign, since there is no tenantInfo
+	if tenantName != "" {              // reset tenant's LastOpResult， since tenant returns pod back to pool, he has enough pods.
 		p.tenantLastOpResultMap[tenantName] = &PrewarmPoolOpResult{
 			failCnt: 0,
 			lastTs:  time.Now().Unix(),
@@ -498,7 +536,7 @@ func (c *AutoScaleMeta) ScanStateOfPods() {
 				} else {
 					// if resp.GetTenantID() != "" {
 					c.mu.Lock()
-					c.updateLocalMetaPodOfTenant(podDesc.Name, podDesc, resp.GetTenantID())
+					c.updateLocalMetaPodOfTenant(podDesc.Name, podDesc, resp.GetTenantID(), resp.StartTime)
 					c.mu.Unlock()
 					muOfStatesDeltaMap.Lock()
 					if resp.GetTenantID() == "" {
@@ -509,6 +547,7 @@ func (c *AutoScaleMeta) ScanStateOfPods() {
 					muOfStatesDeltaMap.Unlock()
 					// }
 				}
+
 			}(v)
 		}
 	}
@@ -804,7 +843,7 @@ func (c *AutoScaleMeta) UpdatePod(pod *v1.Pod) {
 			log.Printf("[UpdatePod]addPreWarmFromPending %v: %v\n", name, pod.Status.PodIP)
 		} else if state == PodStateAssigned {
 			c.pendingCnt--
-			c.updateLocalMetaPodOfTenant(name, podDesc, tenantName)
+			c.updateLocalMetaPodOfTenant(name, podDesc, tenantName, 0)
 			log.Printf("[UpdatePod]updateLocalMetaPodOfTenant %v: %v tenant: %v\n", name, pod.Status.PodIP, tenantName)
 		}
 
@@ -857,10 +896,10 @@ func (c *AutoScaleMeta) ResizePodsOfTenant(from int, target int, tenant string, 
 	}
 }
 
-func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodDesc, tenant string) {
+func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodDesc, tenant string, startTimeOfAssign int64) {
 	log.Printf("[AutoScaleMeta]updateLocalMetaPodOfTenant pod:%v tenant:%v\n", podName, tenant)
 	// remove old pod of tenant info
-	oldTenant := podDesc.TenantName
+	oldTenant, _ := podDesc.GetTenantInfo()
 	var ok bool
 	if oldTenant != tenant {
 		var oldTenantDesc *TenantDesc
@@ -887,7 +926,11 @@ func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodD
 		ok = true
 	}
 	if ok {
-		newTenantDesc.SetPod(podName, podDesc)
+		if startTimeOfAssign != 0 {
+			newTenantDesc.SetPodWithTenantInfo(podName, podDesc, startTimeOfAssign)
+		} else {
+			newTenantDesc.SetPod(podName, podDesc)
+		}
 	} else {
 		log.Printf("wild pod found! pod:%v , tenant: %v\n", podName, tenant)
 	}
@@ -972,7 +1015,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 			} else { // app api error , correct its state
 				log.Printf("[error][AutoScaleMeta::addPodIntoTenant] app api error , err: %v\n", resp.ErrInfo)
 				c.mu.Lock()
-				c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID)
+				c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
 				c.mu.Unlock()
 			}
 
@@ -980,7 +1023,8 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 			c.mu.Lock()
 			statesDeltaMap[v.Name] = ConfigMapPodStateStr(CmRnPodStateAssigned, tenant)
 			// clear dirty metrics
-			c.tenantMap[tenant].SetPod(v.Name, v) // TODO Do we need setPod in early for-loop
+			c.tenantMap[tenant].SetPodWithTenantInfo(v.Name, v, resp.StartTime) // TODO Do we need setPod in early for-loop
+			// c.tenantMap[tenant].SetPod(v.Name, v)
 			tsContainer.ResetMetricsOfPod(v.Name)
 			c.mu.Unlock()
 		}
@@ -1067,7 +1111,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPaus
 			} else { // app api error , correct its state
 				log.Printf("[error][AutoScaleMeta::removePodFromTenant] app api error, undo , err: %v\n", resp.ErrInfo)
 				c.mu.Lock()
-				c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID)
+				c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
 				c.mu.Unlock()
 			}
 		} else {
@@ -1080,7 +1124,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPaus
 	// undo failed works
 	c.mu.Lock()
 	for _, v := range undoList {
-		tenantDesc.SetPod(v.Name, v)
+		tenantDesc.SetPod(v.Name, v) //no need to set startTimeOfAssign again
 		cnt++
 	}
 	if isPause {
