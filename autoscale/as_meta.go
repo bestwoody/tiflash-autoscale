@@ -271,7 +271,7 @@ const (
 	DefaultUpperLimit         = 0.8
 	DefaultPrewarmPoolCap     = 1
 	CapacityOfStaticsAvgSigma = 6
-	DefaultCapOfSeries        = 30 // default scale interval: 5min. 30 * MetricResolutionSeconds(10s) = 300s (5min)
+	DefaultCapOfSeries        = 6  ///default scale interval: 1min. 6 * MetricResolutionSeconds(10s) = 60s (1min)
 	MetricResolutionSeconds   = 10 // metric step: 10s
 )
 
@@ -1205,7 +1205,7 @@ func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSe
 		for _, podName := range podsOfTenant {
 
 			// // FOR DEBUG
-			// tsc.Dump(podName)
+			tsc.Dump(podName)
 			// snapshot := tsc.GetSnapshotOfTimeSeries(podName)
 			// if snapshot != nil {
 			// 	log.Printf("[%v.ComputeStatisticsOfTenant]tenant: %v pod: %v mint,maxt: %v ~ %v statistics: cpu: %v %v mem: %v %v\n",
@@ -1232,6 +1232,10 @@ func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSe
 				statsOfPod = make([]AvgSigma, CapacityOfStaticsAvgSigma)
 			}
 			// TODO hope for a better idea to handle case of new Pod without metrics
+			if len(statsOfPod) > 0 {
+				// podCpuMap[podName] = statsOfPod[0].Avg()
+				log.Printf("[debug]avg cpu of pod %v : %v, %v\n", podName, statsOfPod[0].Avg(), statsOfPod[0].Cnt())
+			}
 			for i := range statsOfPod {
 				statsOfPod[i] = AvgSigma{statsOfPod[i].Avg(), 1}
 			}

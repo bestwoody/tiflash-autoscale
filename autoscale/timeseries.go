@@ -61,8 +61,9 @@ type SimpleTimeSeries struct {
 	series     *list.List // elem type: TimeValues
 	Statistics []AvgSigma
 	// min_time   int64
-	max_time int64
-	cap      int // cap = [tenant's scale_interval] / step
+	max_time    int64
+	cap         int // cap = [tenant's scale_interval] / step
+	intervalSec int
 }
 
 func (c *SimpleTimeSeries) Reset() {
@@ -264,7 +265,9 @@ func (cur *SimpleTimeSeries) append(time int64, values []float64) {
 		cur.max_time = Max(cur.max_time, time)
 	}
 	Add(cur.Statistics, values)
-	for cur.series.Len() > cur.cap {
+	for cur.series.Len() > cur.cap ||
+		(cur.series.Len() > 0 &&
+			cur.series.Front().Value.(*TimeValues).time <= cur.series.Back().Value.(*TimeValues).time-int64(cur.intervalSec)) {
 		Sub(cur.Statistics, cur.series.Front().Value.(*TimeValues).values)
 		cur.series.Remove(cur.series.Front())
 	}
@@ -276,9 +279,10 @@ func (cur *TimeSeriesContainer) Insert(key string, time int64, values []float64)
 	val, ok := cur.seriesMap[key]
 	if !ok {
 		val = &SimpleTimeSeries{
-			series:     list.New(),
-			Statistics: make([]AvgSigma, CapacityOfStaticsAvgSigma),
-			cap:        cur.defaultCapOfSeries,
+			series:      list.New(),
+			Statistics:  make([]AvgSigma, CapacityOfStaticsAvgSigma),
+			cap:         cur.defaultCapOfSeries, /// TODO , assign from user's config
+			intervalSec: cur.defaultCapOfSeries * MetricResolutionSeconds,
 		}
 		cur.seriesMap[key] = val
 	}
@@ -289,9 +293,20 @@ type PromClient struct {
 	cli api.Client
 }
 
-func NewPromClient() (*PromClient, error) {
+func NewPromClientDefault() (*PromClient, error) {
 	client, err := api.NewClient(api.Config{
-		Address: "http://localhost:16292",
+		Address: "http://as-prometheus.tiflash-autoscale.svc.cluster.local:16292",
+	})
+	if err != nil {
+		fmt.Printf("[error][PromClient] creating client: %v\n", err)
+		return nil, err
+	}
+	return &PromClient{cli: client}, nil
+}
+
+func NewPromClient(addr string) (*PromClient, error) {
+	client, err := api.NewClient(api.Config{
+		Address: addr,
 	})
 	if err != nil {
 		fmt.Printf("[error][PromClient] creating client: %v\n", err)
@@ -371,7 +386,8 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	v1api := v1.NewAPI(c.cli)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
+	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
+	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[5m]", time.Now(), v1.WithTimeout(5*time.Second))
 	if err != nil {
 		log.Printf("[error][PromClient] querying Prometheus error: %v\n", err)
 		return nil, err
@@ -379,11 +395,11 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	if len(warnings) > 0 {
 		log.Printf("[warn][PromClient] Warnings: %v\n", warnings)
 	}
-	// fmt.Printf("Result:\n%v\n", result)
+	fmt.Printf("Result: %v\n", result.String())
 	// matrix := result.(model.Matrix)
 	matrix := result.(model.Matrix)
 	ret := make(map[string]*TimeValPair)
-	if matrix == nil {
+	if matrix != nil {
 		for _, sampleStream := range matrix {
 			podName := sampleStream.Metric["pod"]
 			// fmt.Printf("pod: %v\n", podName)
@@ -399,6 +415,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 						time:  last.Timestamp.Unix(),
 						value: rate,
 					}
+					log.Printf("[info][Prom]query cpu, key: %v time: %v val: %v\n", podName, last.Timestamp.Unix(), rate)
 				}
 
 			} else {
@@ -406,5 +423,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 			}
 		}
 	}
+
+	log.Printf("[info][Prom]query cpu, ret: %v, size:%v \n", ret, len(ret))
 	return ret, nil
 }

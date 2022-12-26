@@ -148,6 +148,7 @@ func (c *ClusterManager) collectMetricsFromPromethues() {
 		if atomic.LoadInt32(&c.shutdown) != 0 {
 			return
 		}
+		log.Println("[info][collectMetricsFromPromethues] query cpu")
 		metricOfPods, err := c.PromClient.QueryCpu()
 		if err != nil {
 			continue
@@ -581,7 +582,7 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 			panic(err)
 		}
 	}
-	promCli, err := NewPromClient()
+	promCli, err := NewPromClientDefault()
 	if err != nil {
 		panic(err)
 	}
@@ -601,7 +602,7 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 	ret.initK8sComponents()
 
 	ret.wg.Add(2)
-	go ret.collectMetricsFromPromethues() /// TODO valid same behaviour with metric server
+	go ret.collectMetricsFromMetricServer()
 	go ret.analyzeMetrics()
 	return ret
 }
