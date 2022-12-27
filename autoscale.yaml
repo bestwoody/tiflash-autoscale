@@ -62,9 +62,9 @@ spec:
             fieldRef:
               fieldPath: status.podIP
         - name: PD_ADDR
-          value: "172.31.8.1:2379"
+          value: "host.minikube.internal:2379"
         - name: TIDB_STATUS_ADDR
-          value: "172.31.7.1:4000"
+          value: "host.minikube.internal:4000"
         - name: TIFLASH_AS_KUBE_RUN_MODE
           value: "local" #"local": minikube  others: normal k8s
         - name: TIFLASH_AS_ENABLE_SNS # whether to enable sns: default true, if enabled, TIFLASH_AS_REGION should be assgined

@@ -66,6 +66,15 @@ type SimpleTimeSeries struct {
 	intervalSec int
 }
 
+func computeSeriesCapBasedOnIntervalSec(newIntervalSec int) int {
+	return MaxInt(newIntervalSec/MetricResolutionSeconds, 1)
+}
+
+func (c *SimpleTimeSeries) ReloadCfg(newIntervalSec int) {
+	c.intervalSec = newIntervalSec
+	c.cap = computeSeriesCapBasedOnIntervalSec(newIntervalSec)
+}
+
 func (c *SimpleTimeSeries) Reset() {
 	for c.series.Len() > 0 {
 		c.series.Remove(c.series.Front())
@@ -289,6 +298,27 @@ func (cur *TimeSeriesContainer) Insert(key string, time int64, values []float64)
 	val.append(time, values)
 }
 
+func (cur *TimeSeriesContainer) InsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int) {
+	cur.mu.Lock()
+	defer cur.mu.Unlock()
+	val, ok := cur.seriesMap[key]
+	if !ok {
+		val = &SimpleTimeSeries{
+			series:      list.New(),
+			Statistics:  make([]AvgSigma, CapacityOfStaticsAvgSigma),
+			cap:         computeSeriesCapBasedOnIntervalSec(cfgIntervalSec), /// TODO , assign from user's config
+			intervalSec: cfgIntervalSec,
+		}
+		cur.seriesMap[key] = val
+	} else {
+		if val.intervalSec != cfgIntervalSec {
+			// reload cfgIntervalSec
+			val.ReloadCfg(cfgIntervalSec)
+		}
+	}
+	val.append(time, values)
+}
+
 type PromClient struct {
 	cli api.Client
 }
@@ -387,7 +417,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
-	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[5m]", time.Now(), v1.WithTimeout(5*time.Second))
+	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
 	if err != nil {
 		log.Printf("[error][PromClient] querying Prometheus error: %v\n", err)
 		return nil, err
@@ -397,9 +427,9 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	}
 	fmt.Printf("Result: %v\n", result.String())
 	// matrix := result.(model.Matrix)
-	matrix := result.(model.Matrix)
+	matrix, ok := result.(model.Matrix)
 	ret := make(map[string]*TimeValPair)
-	if matrix != nil {
+	if ok {
 		for _, sampleStream := range matrix {
 			podName := sampleStream.Metric["pod"]
 			// fmt.Printf("pod: %v\n", podName)
@@ -422,8 +452,49 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 				log.Printf("[warn][Prom]no enough points, pod:%v\n", podName)
 			}
 		}
+	} else {
+		log.Printf("[error][Prom]type cast fail when query cpu, real result:%v \n", result)
 	}
 
 	log.Printf("[info][Prom]query cpu, ret: %v, size:%v \n", ret, len(ret))
+	return ret, nil
+}
+
+// query recent 1m , and get latest two cumulative value, and compute delta of them
+func (c *PromClient) QueryComputeTask() (map[string]*TimeValPair, error) {
+
+	v1api := v1.NewAPI(c.cli)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result, warnings, err := v1api.Query(ctx, "sum by(pod) (sum_over_time(tiflash_coprocessor_handling_request_count{metrics_topic=\"tiflash\", pod!=\"\"}[500m]))", time.Now(), v1.WithTimeout(5*time.Second))
+	if err != nil {
+		log.Printf("[error][PromClient] querying Prometheus error: %v\n", err)
+		return nil, err
+	}
+	if len(warnings) > 0 {
+		log.Printf("[warn][PromClient] Warnings: %v\n", warnings)
+	}
+	fmt.Printf("Result: %v\n", result.String())
+
+	vector, ok := result.(model.Vector)
+	ret := make(map[string]*TimeValPair)
+	if ok {
+		for _, sample := range vector {
+
+			podName := sample.Metric["pod"]
+			// fmt.Printf("pod: %v\n", podName)
+			// lenOfVals := len(sampleStream.Values)
+
+			ret[string(podName)] = &TimeValPair{
+				time:  sample.Timestamp.Unix(),
+				value: float64(sample.Value),
+			}
+			log.Printf("[info][Prom]query compute_task_cnt, key: %v time: %v val: %v\n", podName, sample.Timestamp.Unix(), float64(sample.Value))
+		}
+	} else {
+		log.Printf("[error][Prom]type cast fail when query compute_task_cnt, real result:%v \n", result)
+	}
+
+	log.Printf("[info][Prom]query compute_task_cnt, ret: %v, size:%v \n", ret, len(ret))
 	return ret, nil
 }

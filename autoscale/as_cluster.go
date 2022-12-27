@@ -220,8 +220,8 @@ func (c *ClusterManager) analyzeMetrics() {
 			}
 			tenant.TryToReloadConf()
 			cntOfPods := tenant.GetCntOfPods()
-			if cntOfPods < tenant.MinCntOfPod {
-				log.Printf("[analyzeMetrics] StateResume and cntOfPods < tenant.MinCntOfPo, add more pods, minCntOfPods:%v tenant: %v\n", tenant.MinCntOfPod, tenant.Name)
+			if cntOfPods < tenant.GetMinCntOfPod() {
+				log.Printf("[analyzeMetrics] StateResume and cntOfPods < tenant.MinCntOfPo, add more pods, minCntOfPods:%v tenant: %v\n", tenant.GetMinCntOfPod(), tenant.Name)
 				c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.conf.GetInitCntOfPod(), tenant.Name, c.tsContainer)
 				if c.SnsManager != nil {
 					c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS

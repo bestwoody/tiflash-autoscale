@@ -168,20 +168,19 @@ type TenantConf struct { // TODO use it
 }
 
 type TenantDesc struct {
-	Name        string
-	MinCntOfPod int // conf
-	MaxCntOfPod int // conf
-	podMap      map[string]*PodDesc
-	podList     []*PodDesc
-	State       int32
-	mu          sync.Mutex
-	ResizeMu    sync.Mutex
+	Name     string
+	podMap   map[string]*PodDesc
+	podList  []*PodDesc
+	State    int32
+	mu       sync.RWMutex
+	ResizeMu sync.Mutex
 
 	conf            ConfigOfComputeCluster  /// TODO copy from configManager, reload for each analyze loop
 	refOfLatestConf *ConfigOfComputeCluster /// TODO assign it // DO NOT directly read it ,since it is cocurrently being writed by other thread
 	// conf        TenantConf // TODO use it
 }
 
+// /TODO check and valid params such as: max/min cores
 func (c *TenantDesc) TryToReloadConf() bool {
 	////TODO
 
@@ -200,9 +199,33 @@ func (c *TenantDesc) TryToReloadConf() bool {
 	return false
 }
 
+func (c *TenantDesc) GetInitCntOfPod() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conf.GetInitCntOfPod()
+}
+
+func (c *TenantDesc) GetLowerAndUpperCpuScaleThreshold() (float64, float64) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conf.GetLowerAndUpperCpuScaleThreshold()
+}
+
+func (c *TenantDesc) GetMinCntOfPod() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conf.MinCores / DefaultCoreOfPod
+}
+
+func (c *TenantDesc) GetMaxCntOfPod() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conf.MaxCores / DefaultCoreOfPod
+}
+
 func (c *TenantDesc) GetCntOfPods() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return len(c.podMap)
 }
 
@@ -231,8 +254,8 @@ func (c *TenantDesc) SetPodWithTenantInfo(k string, v *PodDesc, startTimeOfAssig
 }
 
 func (c *TenantDesc) GetPod(k string) (*PodDesc, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	v, ok := c.podMap[k]
 	return v, ok
 }
@@ -268,8 +291,8 @@ func (c *TenantDesc) PopOnePod() *PodDesc {
 }
 
 func (c *TenantDesc) GetPodNames() []string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	ret := make([]string, 0, len(c.podMap))
 	for _, v := range c.podList {
 		ret = append(ret, v.Name)
@@ -314,22 +337,36 @@ const (
 )
 
 func NewTenantDescDefault(name string) *TenantDesc {
+	minPods := DefaultMinCntOfPod
+	maxPods := DefaultMaxCntOfPod
 	return &TenantDesc{
-		Name:        name,
-		MinCntOfPod: DefaultMinCntOfPod,
-		MaxCntOfPod: DefaultMaxCntOfPod,
-		podMap:      make(map[string]*PodDesc),
-		podList:     make([]*PodDesc, 0, 64),
+		Name: name,
+
+		podMap:  make(map[string]*PodDesc),
+		podList: make([]*PodDesc, 0, 64),
+		conf: ConfigOfComputeCluster{
+			Disabled:                 false, ///TODO  disable or not defualt?
+			AutoPauseIntervalSeconds: 300,   // 5min defualt
+			MinCores:                 minPods * DefaultCoreOfPod,
+			MaxCores:                 maxPods * DefaultCoreOfPod,
+			InitCores:                minPods * DefaultCoreOfPod,
+			WindowSeconds:            300,
+			CpuScaleRules:            nil,
+			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
+				Name: name,
+			},
+			LastModifiedTs: 0,
+		},
 	}
 }
 
 func NewTenantDesc(name string, minPods int, maxPods int) *TenantDesc {
 	return &TenantDesc{
-		Name:        name,
-		MinCntOfPod: minPods,
-		MaxCntOfPod: maxPods,
-		podMap:      make(map[string]*PodDesc),
-		podList:     make([]*PodDesc, 0, 64),
+		Name: name,
+		// MinCntOfPod: minPods,
+		// MaxCntOfPod: maxPods,
+		podMap:  make(map[string]*PodDesc),
+		podList: make([]*PodDesc, 0, 64),
 		conf: ConfigOfComputeCluster{
 			Disabled:                 false, ///TODO  disable or not defualt?
 			AutoPauseIntervalSeconds: 300,   // 5min defualt
@@ -368,7 +405,7 @@ func NewPrewarmPool(warmedPods *TenantDesc) *PrewarmPool {
 		WarmedPods:            warmedPods,
 		cntOfPending:          atomic.Int32{},
 		tenantLastOpResultMap: make(map[string]*PrewarmPoolOpResult),
-		SoftLimit:             warmedPods.MaxCntOfPod,
+		SoftLimit:             warmedPods.GetMaxCntOfPod(),
 	}
 }
 
@@ -634,11 +671,21 @@ func (c *AutoScaleMeta) Resume(tenant string, tsContainer *TimeSeriesContainer) 
 	if v.SyncStateResuming() {
 		log.Printf("[AutoScaleMeta] Resuming %v\n", tenant)
 		// TODO ensure there is no pods now
-		go c.addPodIntoTenant(v.MinCntOfPod, tenant, tsContainer, true)
+		go c.addPodIntoTenant(v.GetInitCntOfPod(), tenant, tsContainer, true)
 		return true
 	} else {
 		return false
 	}
+}
+
+func (c *AutoScaleMeta) GetTopology(tenant string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.tenantMap[tenant]
+	if !ok {
+		return nil
+	}
+	return v.GetPodNames()
 }
 
 func (c *AutoScaleMeta) GetTenantState(tenant string) (bool, int32, int) {

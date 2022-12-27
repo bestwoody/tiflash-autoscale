@@ -20,15 +20,19 @@ package autoscale
 
 import (
 	"context"
-	pb "github.com/tikv/pd/auto_scale_proto"
+	"log"
+	"net"
 	"time"
+
+	pb "github.com/tikv/pd/auto_scale_proto"
+	"google.golang.org/grpc"
 )
 
 type server struct {
-	pb.UnimplementedAutoScaleServer
+	// pb.UnimplementedAutoScaleServer
 }
 
-func (s *server) GetTopo(ctx context.Context, in *pb.GetTopologyRequest) (*pb.GetTopologyResponse, error) {
+func (s *server) GetTopology(ctx context.Context, in *pb.GetTopologyRequest) (*pb.GetTopologyResponse, error) {
 	now := time.Now()
 	ts := now.UnixNano()
 
@@ -37,5 +41,18 @@ func (s *server) GetTopo(ctx context.Context, in *pb.GetTopologyRequest) (*pb.Ge
 }
 
 func GetTopology(tidbClusterID string) []string {
-	return []string{"aaa,bbb"}
+	return Cm4Http.AutoScaleMeta.GetTopology(tidbClusterID)
+}
+
+func RunGrpcServer() {
+	listener, err := net.Listen("tcp", "8082")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	pb.RegisterAutoScaleServer(s, &server{})
+	log.Printf("[grpc] server listening at %v", listener.Addr())
+	if err := s.Serve(listener); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 }

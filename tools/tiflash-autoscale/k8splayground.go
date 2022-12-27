@@ -419,6 +419,8 @@ func main() {
 
 	// run http API server
 	go autoscale.RunAutoscaleHttpServer()
+	// run grpc API server
+	go autoscale.RunGrpcServer()
 
 	// time.Sleep(3600 * time.Second)
 	cm.Wait()
