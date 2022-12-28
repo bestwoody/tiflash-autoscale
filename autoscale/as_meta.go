@@ -223,6 +223,18 @@ func (c *TenantDesc) GetMaxCntOfPod() int {
 	return c.conf.MaxCores / DefaultCoreOfPod
 }
 
+func (c *TenantDesc) GetScaleIntervalSec() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conf.WindowSeconds
+}
+
+func (c *TenantDesc) GetAutoPauseIntervalSec() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conf.AutoPauseIntervalSeconds
+}
+
 func (c *TenantDesc) GetCntOfPods() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -334,6 +346,8 @@ const (
 	CapacityOfStaticsAvgSigma = 6
 	DefaultCapOfSeries        = 6  ///default scale interval: 1min. 6 * MetricResolutionSeconds(10s) = 60s (1min)
 	MetricResolutionSeconds   = 10 // metric step: 10s
+
+	HardCodeMaxScaleIntervalSecOfCfg = 3600
 )
 
 func NewTenantDescDefault(name string) *TenantDesc {
@@ -505,7 +519,7 @@ func (p *PrewarmPool) putWarmedPod(tenantName string, pod *PodDesc, isNewPod boo
 }
 
 type AutoScaleMeta struct {
-	mu sync.Mutex
+	mu sync.Mutex //TODO use RwMutex
 	// Pod2tenant map[string]string
 	tenantMap  map[string]*TenantDesc
 	PodDescMap map[string]*PodDesc
@@ -539,6 +553,41 @@ func (c *AutoScaleMeta) loadTenants() {
 	c.SetupTenant("t1", 1, 4)
 	log.Printf("loadTenant, SetupTenant(t1, 1, 4)\n")
 	/// TODO load tenants from config of control panel
+}
+
+type TenantInfoProvider interface {
+	GetTenantInfoOfPod(podName string) (string, int64)
+	GetTenantScaleIntervalSec(tenant string) (int, bool) // return interval, hasErr
+}
+
+func (c *AutoScaleMeta) GetTenantInfoOfPod(podName string) (string, int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.PodDescMap[podName]
+	if !ok {
+		return "", 0
+	}
+	return v.GetTenantInfo()
+}
+
+func (c *AutoScaleMeta) GetTenantScaleIntervalSec(tenant string) (int, bool /*hasErr*/) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.tenantMap[tenant]
+	if !ok {
+		return 0, true
+	}
+	return v.GetScaleIntervalSec(), false
+}
+
+func (c *AutoScaleMeta) GetTenantAutoPauseIntervalSec(tenant string) (int, bool /*hasErr*/) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.tenantMap[tenant]
+	if !ok {
+		return 0, true
+	}
+	return v.GetScaleIntervalSec(), false
 }
 
 func (c *AutoScaleMeta) CopyPodDescMap() map[string]*PodDesc {
@@ -631,6 +680,26 @@ func (c *AutoScaleMeta) GetTenants() []*TenantDesc {
 	ret := make([]*TenantDesc, 0, len(c.tenantMap))
 	for _, v := range c.tenantMap {
 		ret = append(ret, v)
+	}
+	return ret
+}
+
+func (c *AutoScaleMeta) CopyTenantsMap() map[string]*TenantDesc {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ret := make(map[string]*TenantDesc)
+	for k, v := range c.tenantMap {
+		ret[k] = v
+	}
+	return ret
+}
+
+func (c *AutoScaleMeta) GetTenantDesc(tenant string) *TenantDesc {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ret, ok := c.tenantMap[tenant]
+	if !ok {
+		return nil
 	}
 	return ret
 }
@@ -988,22 +1057,16 @@ func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodD
 func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer *TimeSeriesContainer, isResume bool) int {
 	log.Printf("[AutoScaleMeta::addPodIntoTenant] %v %v \n", addCnt, tenant)
 
-	// tMu := c.getTenantLock(tenant)
-	// if tMu == nil {
-	// 	return -1
-	// }
-	// tMu.Lock()
-	// defer tMu.Unlock()
 	c.mu.Lock()
 	// check if tenant is valid again to prevent it has been removed
 	tenantDesc, ok := c.tenantMap[tenant]
+	c.mu.Unlock()
 	if !ok {
-		c.mu.Unlock()
-		// tMu.Unlock()
 		return -1
 	}
 	tenantDesc.ResizeMu.Lock()
 	defer tenantDesc.ResizeMu.Unlock()
+	c.mu.Lock()
 	// check validation of state
 	if isResume { // remove all pods of tenant if we want pause
 		state := tenantDesc.GetState()
@@ -1021,33 +1084,14 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 		}
 	}
 
-	// cnt := addCnt
-
 	podsToAssign, failCnt := c.PrewarmPool.getWarmedPods(tenant, addCnt)
-	// podsToAssign := make([]*PodDesc, 0, addCnt)
 
-	// podnames := c.PrewarmPods.GetPodNames()
-
-	// for _, k := range podnames {
-	// 	if cnt > 0 {
-	// 		v := c.PrewarmPods.RemovePod(k, true)
-	// 		if v != nil {
-	// 			podsToAssign = append(podsToAssign, v)
-	// 			cnt--
-	// 		} else {
-	// 			log.Println("[AutoScaleMeta::addPodIntoTenant] c.PrewarmPods.RemovePod fail, return nil!")
-	// 		}
-	// 	} else {
-	// 		//enough pods, break early
-	// 		break
-	// 	}
-	// }
 	for _, pod2assign := range podsToAssign {
 		log.Printf("[AutoScaleMeta::addPodIntoTenant] podsToAssign(name, ip): %v %v\n", pod2assign.Name, pod2assign.IP)
 	}
 
 	c.mu.Unlock()
-	// tMu.Unlock()
+
 	statesDeltaMap := make(map[string]string)
 	undoList := make([]*PodDesc, 0, addCnt)
 	for _, v := range podsToAssign {
@@ -1071,7 +1115,6 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 			statesDeltaMap[v.Name] = ConfigMapPodStateStr(CmRnPodStateAssigned, tenant)
 			// clear dirty metrics
 			c.tenantMap[tenant].SetPodWithTenantInfo(v.Name, v, resp.StartTime) // TODO Do we need setPod in early for-loop
-			// c.tenantMap[tenant].SetPod(v.Name, v)
 			tsContainer.ResetMetricsOfPod(v.Name)
 			c.mu.Unlock()
 		}
@@ -1096,22 +1139,16 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPause bool) int {
 	log.Printf("[AutoScaleMeta::removePodFromTenant] %v %v \n", removeCnt, tenant)
 
-	// tMu := c.getTenantLock(tenant)
-	// if tMu == nil {
-	// 	return -1
-	// }
-	// tMu.Lock()
-	// defer tMu.Unlock()
 	c.mu.Lock()
 	// check if tenant is valid again to prevent it has been removed
 	tenantDesc, ok := c.tenantMap[tenant]
+	c.mu.Unlock()
 	if !ok {
-		c.mu.Unlock()
 		return -1
 	}
 	tenantDesc.ResizeMu.Lock()
 	defer tenantDesc.ResizeMu.Unlock()
-
+	c.mu.Lock() // tenantDesc.ResizeMu.Lock() always before c.mu.Lock(), to prevent dead lock between  tenantDesc.ResizeMu and c.mu.Lock()
 	// check validation of state
 	if isPause { // remove all pods of tenant if we want pause
 		removeCnt = tenantDesc.GetCntOfPods()
@@ -1281,22 +1318,24 @@ func (c *AutoScaleMeta) UpdateTenant4Test(podName string, newTenant string) bool
 	return true
 }
 
-func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSeriesContainer, caller string) ([]AvgSigma, map[string]float64) {
+func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSeriesContainer, caller string, metricsTopic MetricsTopic) ([]AvgSigma, map[string]float64 /* avg_map */, map[string]int64 /* cnt_map*/) {
 	c.mu.Lock()
 
 	tenantDesc, ok := c.tenantMap[tenantName]
 	if !ok {
 		c.mu.Unlock()
-		return nil, nil
+		return nil, nil, nil
 	} else {
 		podsOfTenant := tenantDesc.GetPodNames()
 		c.mu.Unlock()
 		podCpuMap := make(map[string]float64)
+		podPointCntMap := make(map[string]int64)
 		ret := make([]AvgSigma, CapacityOfStaticsAvgSigma)
 		for _, podName := range podsOfTenant {
 
 			// // FOR DEBUG
-			tsc.Dump(podName)
+			// tsc.Dump(podName)
+
 			// snapshot := tsc.GetSnapshotOfTimeSeries(podName)
 			// if snapshot != nil {
 			// 	log.Printf("[%v.ComputeStatisticsOfTenant]tenant: %v pod: %v mint,maxt: %v ~ %v statistics: cpu: %v %v mem: %v %v\n",
@@ -1318,7 +1357,7 @@ func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSe
 			// 			tenantName, podName, stats[0].Avg(), stats[0].Cnt(), stats[1].Avg(), stats[1].Cnt())
 			// 	}
 			// }
-			statsOfPod := tsc.GetStatisticsOfPod(podName)
+			statsOfPod := tsc.GetStatisticsOfPod(podName, metricsTopic)
 			if statsOfPod == nil {
 				statsOfPod = make([]AvgSigma, CapacityOfStaticsAvgSigma)
 			}
@@ -1332,12 +1371,13 @@ func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSe
 			}
 			if len(statsOfPod) > 0 {
 				podCpuMap[podName] = statsOfPod[0].Avg()
+				podPointCntMap[podName] = statsOfPod[0].Cnt()
 				// log.Printf("[debug]avg cpu of pod %v : %v, %v\n", podName, statsOfPod[0].Avg(), statsOfPod[0].Cnt())
 			}
 			Merge(ret, statsOfPod)
 
 		}
-		return ret, podCpuMap
+		return ret, podCpuMap, podPointCntMap
 	}
 }
 
