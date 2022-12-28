@@ -67,12 +67,12 @@ func MakeTopic(c context.Context, api SNSCreateTopicAPI, input *sns.CreateTopicI
 
 func (c *AwsSnsManager) TryToPublishTopology(tidbClusterID string, timestamp int64, topologyList []string) error {
 	topicArn, ok := c.topicArnMap.Load(tidbClusterID)
-	if ok {
-		return c.publishTopology(tidbClusterID, timestamp, topologyList, topicArn.(string))
-	}
-	topicArn, err := c.createTopic(tidbClusterID)
-	if err != nil {
-		return err
+	if !ok {
+		var err error
+		topicArn, err = c.createTopic(tidbClusterID)
+		if err != nil {
+			return err
+		}
 	}
 	return c.publishTopology(tidbClusterID, timestamp, topologyList, topicArn.(string))
 }
