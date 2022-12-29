@@ -77,63 +77,7 @@ type ClusterManager struct {
 // TODO expire of removed Pod in tsContainer,lstTsMap
 
 func (c *ClusterManager) collectMetricsFromMetricServer() {
-	defer c.wg.Done()
-	as_meta := c.AutoScaleMeta
-	lstTsMap := c.lstTsMap
-	tsContainer := c.tsContainer
-	hasNew := false
-	for {
-		time.Sleep(200 * time.Millisecond)
-		if atomic.LoadInt32(&c.shutdown) != 0 {
-			return
-		}
-		labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": c.CloneSetName}}
-		// st := time.Now().UnixNano()
-		podMetricsList, err := c.MetricsCli.MetricsV1beta1().PodMetricses(c.Namespace).List(
-			context.TODO(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
-		if err != nil {
-			panic(err.Error())
-		}
-		mint := int64(math.MaxInt64)
-		maxt := int64(0)
-
-		for _, pod := range podMetricsList.Items {
-			lstTs, ok := lstTsMap[pod.Name]
-			if !ok || pod.Timestamp.Unix() > lstTs {
-				tsContainer.Insert(pod.Name, pod.Timestamp.Unix(),
-					[]float64{
-						pod.Containers[0].Usage.Cpu().AsApproximateFloat64(),
-						pod.Containers[0].Usage.Memory().AsApproximateFloat64(),
-					})
-				lstTsMap[pod.Name] = pod.Timestamp.Unix()
-
-				snapshot := tsContainer.GetSnapshotOfTimeSeries(pod.Name, MetricsTopicCpu)
-
-				hasNew = true
-				mint = Min(snapshot.MinTime, mint)
-				maxt = Max(snapshot.MaxTime, maxt)
-
-			}
-
-		}
-
-		// just print tenant's avg metrics
-		if hasNew {
-			hasNew = false
-			tArr := c.AutoScaleMeta.GetTenantNames()
-			for _, tName := range tArr {
-				stats, _, _ := as_meta.ComputeStatisticsOfTenant(tName, tsContainer, "collectMetrics", MetricsTopicCpu)
-				log.Printf("[collectMetrics]Tenant %v statistics: cpu: %v %v mem: %v %v time_range:%v~%v\n", tName,
-					stats[0].Avg(),
-					stats[0].Cnt(),
-					stats[1].Avg(),
-					stats[1].Cnt(),
-					mint, maxt,
-				)
-			}
-		}
-	}
-
+	c.collectMetrics(MetricsTopicCpu, true)
 }
 
 func (c *ClusterManager) initRangeMetricsFromPromethues(intervalSec int) error {
@@ -146,7 +90,7 @@ func (c *ClusterManager) initRangeMetricsFromPromethues(intervalSec int) error {
 		log.Printf("[error][initRangeMetricsFromPromethues]QueryCpu fail, err:%v\n", err.Error())
 		return err
 	}
-	tsContainer.DumpAll()
+	tsContainer.DumpAll(MetricsTopicCpu)
 
 	tArr := c.AutoScaleMeta.GetTenantNames()
 	for _, tName := range tArr {
@@ -165,6 +109,10 @@ func (c *ClusterManager) initRangeMetricsFromPromethues(intervalSec int) error {
 }
 
 func (c *ClusterManager) collectTaskCntMetricsFromPromethues() {
+	c.collectMetrics(MetricsTopicTaskCnt, false)
+}
+
+func (c *ClusterManager) collectMetrics(metricsTopic MetricsTopic, fromMetricServer bool) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 	as_meta := c.AutoScaleMeta
@@ -180,10 +128,37 @@ func (c *ClusterManager) collectTaskCntMetricsFromPromethues() {
 		if atomic.LoadInt32(&c.shutdown) != 0 {
 			return
 		}
-		log.Println("[info][collectTaskCntMetricsFromPromethues] query taskcnt")
+		log.Printf("[info][collectMetrics] query %v, fromMetricServer: %v", metricsTopic.String(), fromMetricServer)
 		lastQueryTs = time.Now().Unix()
-		metricOfPods, err := c.PromClient.QueryComputeTask()
+		var metricOfPods map[string]*TimeValPair
+		var err error
+
+		if metricsTopic == MetricsTopicCpu {
+			if fromMetricServer {
+				labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": c.CloneSetName}}
+				// st := time.Now().UnixNano()
+				podMetricsList, err := c.MetricsCli.MetricsV1beta1().PodMetricses(c.Namespace).List(
+					context.TODO(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
+				if err == nil {
+					metricOfPods = make(map[string]*TimeValPair)
+					for _, pod := range podMetricsList.Items {
+						metricOfPods[pod.Name] = &TimeValPair{
+							time:  pod.Timestamp.Unix(),
+							value: pod.Containers[0].Usage.Cpu().AsApproximateFloat64(),
+						}
+					}
+				}
+			} else {
+				metricOfPods, err = c.PromClient.QueryCpu()
+			}
+		} else if metricsTopic == MetricsTopicTaskCnt {
+			metricOfPods, err = c.PromClient.QueryComputeTask()
+		} else {
+			panic(fmt.Errorf("unknown MetricsTopic:%v", metricsTopic))
+		}
+
 		if err != nil {
+			log.Printf("[error][collectMetrics]fail to query metric:%v fromMetricServer:%v\n", metricsTopic.String(), fromMetricServer)
 			continue
 		}
 
@@ -197,112 +172,82 @@ func (c *ClusterManager) collectTaskCntMetricsFromPromethues() {
 			}
 			tenantDesc := as_meta.GetTenantDesc(tenantName)
 			if tenantDesc == nil {
+				log.Printf("[error][collectMetrics]tenantdesc is nil, tenant:%v\n", tenantName)
 				continue
 			}
-			tsContainer.InsertTaskCntWithUserCfg(podName, metric.time,
-				[]float64{
-					metric.value,
-					0.0, //TODO remove this dummy mem metric
-				}, tenantDesc.GetAutoPauseIntervalSec())
+			if metricsTopic == MetricsTopicCpu {
+				tsContainer.InsertWithUserCfg(podName, metric.time,
+					[]float64{
+						metric.value,
+						0.0, //TODO remove this dummy mem metric
+					}, tenantDesc.GetScaleIntervalSec())
+			} else if metricsTopic == MetricsTopicTaskCnt {
+				tsContainer.InsertTaskCntWithUserCfg(podName, metric.time,
+					[]float64{
+						metric.value,
+						0.0, //TODO remove this dummy mem metric
+					}, tenantDesc.GetAutoPauseIntervalSec())
+			} else {
+				panic(fmt.Errorf("unknown MetricsTopic#2:%v", metricsTopic))
+			}
 
-			snapshot := tsContainer.GetSnapshotOfTimeSeries(podName, MetricsTopicTaskCnt)
-
-			mint = Min(snapshot.MinTime, mint)
-			maxt = Max(snapshot.MaxTime, maxt)
+			snapshot := tsContainer.GetSnapshotOfTimeSeries(podName, metricsTopic)
+			if snapshot != nil {
+				mint = Min(snapshot.MinTime, mint)
+				maxt = Max(snapshot.MaxTime, maxt)
+			} else {
+				log.Printf("[info][collectMetrics]GetSnapshotOfTimeSeries: snapshot is nil! tenant:%v pod:%v \n", tenantDesc.Name, podName)
+			}
 
 		}
 
 		// just print tenant's avg metrics
 		tArr := c.AutoScaleMeta.GetTenantNames()
 		for _, tName := range tArr {
-			stats, _, _ := as_meta.ComputeStatisticsOfTenant(tName, tsContainer, "collectTaskCntMetricsFromPromethues", MetricsTopicTaskCnt)
-			log.Printf("[info][collectTaskCntMetricsFromPromethues]Tenant %v statistics: task_cnt: %v %v time_range:%v~%v\n", tName,
-				stats[0].Avg(),
-				stats[0].Cnt(),
-				mint, maxt,
-			)
+			stats, _, _ := as_meta.ComputeStatisticsOfTenant(tName, tsContainer, "collectTaskCntMetricsFromPromethues", metricsTopic)
+			if stats != nil {
+				var statVal float64
+				if metricsTopic == MetricsTopicCpu {
+					statVal = stats[0].Avg()
+				} else if metricsTopic == MetricsTopicTaskCnt {
+					statVal = stats[0].Sum()
+				} else {
+					panic(fmt.Errorf("unknown MetricsTopic#3:%v", metricsTopic))
+				}
+				log.Printf("[info][collectMetrics]metricsTopic:%v Tenant %v statistics: val, cnt: %v %v time_range:%v~%v\n",
+					metricsTopic.String(), tName,
+					statVal,
+					stats[0].Cnt(),
+					mint, maxt,
+				)
+			} else {
+				log.Printf("[info][collectMetrics]ComputeStatisticsOfTenant: stats is nil! metricsTopic:%v tenant:%v \n",
+					metricsTopic.String(), tName)
+			}
 		}
+		tsContainer.DumpAll(metricsTopic)
 	}
-
 }
 
 func (c *ClusterManager) collectMetricsFromPromethues() {
-	defer c.wg.Done()
-	as_meta := c.AutoScaleMeta
-	lstTsMap := c.lstTsMap
-	tsContainer := c.tsContainer
-	hasNew := false
-
-	for {
-		time.Sleep(200 * time.Millisecond)
-		if atomic.LoadInt32(&c.shutdown) != 0 {
-			return
-		}
-		log.Println("[info][collectMetricsFromPromethues] query cpu")
-		metricOfPods, err := c.PromClient.QueryCpu()
-		if err != nil {
-			continue
-		}
-		// labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": c.CloneSetName}}
-		// st := time.Now().UnixNano()
-		// podMetricsList, err := c.MetricsCli.MetricsV1beta1().PodMetricses(c.Namespace).List(
-		// context.TODO(), metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
-		// if err != nil {
-		// panic(err.Error())
-		// }
-		mint := int64(math.MaxInt64)
-		maxt := int64(0)
-
-		for podName, metric := range metricOfPods {
-			lstTs, ok := lstTsMap[podName]
-			if !ok || metric.time > lstTs {
-				tsContainer.Insert(podName, metric.time,
-					[]float64{
-						metric.value,
-						0.0, //TODO remove this dummy mem metric
-					})
-				lstTsMap[podName] = metric.time
-
-				snapshot := tsContainer.GetSnapshotOfTimeSeries(podName, MetricsTopicCpu)
-
-				hasNew = true
-				mint = Min(snapshot.MinTime, mint)
-				maxt = Max(snapshot.MaxTime, maxt)
-
-			}
-
-		}
-
-		// just print tenant's avg metrics
-		if hasNew {
-			hasNew = false
-			tArr := c.AutoScaleMeta.GetTenantNames()
-			for _, tName := range tArr {
-				stats, _, _ := as_meta.ComputeStatisticsOfTenant(tName, tsContainer, "collectMetrics", MetricsTopicCpu)
-				log.Printf("[collectMetrics]Tenant %v statistics: cpu: %v %v mem: %v %v time_range:%v~%v\n", tName,
-					stats[0].Avg(),
-					stats[0].Cnt(),
-					stats[1].Avg(),
-					stats[1].Cnt(),
-					mint, maxt,
-				)
-			}
-		}
-	}
-
+	c.collectMetrics(MetricsTopicCpu, false)
 }
 
 func (c *ClusterManager) analyzeMetrics() {
 	// TODO implement
-
+	c.wg.Add(1)
 	// c.tsContainer.GetSnapshotOfTimeSeries()
 	defer c.wg.Done()
 	lastTs := int64(0)
 	for {
-		time.Sleep(100 * time.Millisecond)
+		if time.Now().Unix() == lastTs {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
 		if atomic.LoadInt32(&c.shutdown) != 0 {
 			return
 		}
+		lastTs = time.Now().Unix()
 		tenants := c.AutoScaleMeta.GetTenants()
 		for _, tenant := range tenants {
 			if tenant.GetState() != TenantStateResumed { // tenant not available
@@ -324,15 +269,15 @@ func (c *ClusterManager) analyzeMetrics() {
 				// CoreOfPod := DefaultCoreOfPod
 
 				// Print Debug Info
-				curTs := time.Now().Unix()
+
 				// cpuusage := MockComputeStatisticsOfTenant(CoreOfPod, cntOfPods, tenant.MaxCntOfPod)
-				if lastTs != curTs {
-					// log.Printf("[analyzeMetrics]ComputeStatisticsOfTenant, pods Of Tenant %v: %+v\n", tenant.Name, tenant.GetPodNames())
-					log.Printf("[analyzeMetrics]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v \n", tenant.Name,
-						stats[0].Avg(), stats[0].Cnt(), podCpuMap)
-					// log.Printf("[ComputeStatisticsOfTenant] cpu usage: %v\n", cpuusage)
-					lastTs = curTs
-				}
+				// if lastTs != curTs {
+				// log.Printf("[analyzeMetrics]ComputeStatisticsOfTenant, pods Of Tenant %v: %+v\n", tenant.Name, tenant.GetPodNames())
+				log.Printf("[analyzeMetrics]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v \n", tenant.Name,
+					stats[0].Avg(), stats[0].Cnt(), podCpuMap)
+				// log.Printf("[ComputeStatisticsOfTenant] cpu usage: %v\n", cpuusage)
+				// lastTs = curTs
+				// }
 				minCpuUsageThreshold, maxCpuUsageThreshold := tenant.GetLowerAndUpperCpuScaleThreshold()
 				bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, minCpuUsageThreshold, maxCpuUsageThreshold)
 				if bestPods != -1 && cntOfPods != bestPods {
@@ -682,7 +627,7 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 		SnsManager:    snsManager,
 		PromClient:    promCli,
 		AutoScaleMeta: NewAutoScaleMeta(k8sConfig),
-		tsContainer:   NewTimeSeriesContainer(DefaultCapOfSeries, promCli),
+		tsContainer:   NewTimeSeriesContainer(promCli),
 		lstTsMap:      make(map[string]int64),
 
 		K8sCli:     K8sCli,
@@ -692,7 +637,7 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 	ret.initK8sComponents()
 
 	ret.initRangeMetricsFromPromethues(HardCodeMaxScaleIntervalSecOfCfg)
-	ret.wg.Add(2)
+	// ret.wg.Add(2)
 	go ret.collectMetricsFromMetricServer()
 	go ret.analyzeMetrics()
 	go ret.collectTaskCntMetricsFromPromethues()

@@ -344,9 +344,11 @@ const (
 	DefaultUpperLimit         = 0.8
 	DefaultPrewarmPoolCap     = 1
 	CapacityOfStaticsAvgSigma = 6
-	DefaultCapOfSeries        = 6  ///default scale interval: 1min. 6 * MetricResolutionSeconds(10s) = 60s (1min)
-	MetricResolutionSeconds   = 10 // metric step: 10s
+	// DefaultCapOfSeries        = 6  ///default scale interval: 1min. 6 * MetricResolutionSeconds(10s) = 60s (1min)
+	MetricResolutionSeconds = 10 // metric step: 10s
 
+	DefaultAutoPauseIntervalSeconds  = 300
+	DefaultScaleIntervalSeconds      = 60
 	HardCodeMaxScaleIntervalSecOfCfg = 3600
 )
 
@@ -359,12 +361,12 @@ func NewTenantDescDefault(name string) *TenantDesc {
 		podMap:  make(map[string]*PodDesc),
 		podList: make([]*PodDesc, 0, 64),
 		conf: ConfigOfComputeCluster{
-			Disabled:                 false, ///TODO  disable or not defualt?
-			AutoPauseIntervalSeconds: 300,   // 5min defualt
+			Disabled:                 false,                           ///TODO  disable or not defualt?
+			AutoPauseIntervalSeconds: DefaultAutoPauseIntervalSeconds, // 5min defualt
 			MinCores:                 minPods * DefaultCoreOfPod,
 			MaxCores:                 maxPods * DefaultCoreOfPod,
 			InitCores:                minPods * DefaultCoreOfPod,
-			WindowSeconds:            300,
+			WindowSeconds:            DefaultScaleIntervalSeconds,
 			CpuScaleRules:            nil,
 			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
 				Name: name,
@@ -387,7 +389,7 @@ func NewTenantDesc(name string, minPods int, maxPods int) *TenantDesc {
 			MinCores:                 minPods * DefaultCoreOfPod,
 			MaxCores:                 maxPods * DefaultCoreOfPod,
 			InitCores:                minPods * DefaultCoreOfPod,
-			WindowSeconds:            300,
+			WindowSeconds:            60,
 			CpuScaleRules:            nil,
 			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
 				Name: name,
@@ -1364,7 +1366,7 @@ func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSe
 			// TODO hope for a better idea to handle case of new Pod without metrics
 			if len(statsOfPod) > 0 {
 				// podCpuMap[podName] = statsOfPod[0].Avg()
-				log.Printf("[debug]avg cpu of pod %v : %v, %v\n", podName, statsOfPod[0].Avg(), statsOfPod[0].Cnt())
+				log.Printf("[debug]avg %v of pod %v : %v, %v\n", metricsTopic.String(), podName, statsOfPod[0].Avg(), statsOfPod[0].Cnt())
 			}
 			for i := range statsOfPod {
 				statsOfPod[i] = AvgSigma{statsOfPod[i].Avg(), 1}

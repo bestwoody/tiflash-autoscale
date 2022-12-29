@@ -90,7 +90,7 @@ type TimeValPair struct {
 	value float64
 }
 
-func (c *SimpleTimeSeries) Dump(podName string) {
+func (c *SimpleTimeSeries) Dump(podName string, topic MetricsTopic) {
 	l := c.series
 	arr := make([]TimeValPair, 0, l.Len())
 	for e := l.Front(); e != nil; e = e.Next() {
@@ -102,7 +102,7 @@ func (c *SimpleTimeSeries) Dump(podName string) {
 		}
 		// do something with e.Value
 	}
-	log.Printf("[SimpleTimeSeries]podname: %v , dump arr: %v %+v\n", podName, len(arr), arr)
+	log.Printf("[SimpleTimeSeries]metric_topic:%v podname: %v , dump arr: %v %+v\n", topic.String(), podName, len(arr), arr)
 }
 
 func (c *SimpleTimeSeries) ValsOfMetric() *AvgSigma {
@@ -137,6 +137,10 @@ func (cur *AvgSigma) Avg() float64 {
 
 func (cur *AvgSigma) Cnt() int64 {
 	return cur.cnt
+}
+
+func (cur *AvgSigma) Sum() float64 {
+	return cur.sum
 }
 
 func (cur *AvgSigma) Merge(o *AvgSigma) {
@@ -187,18 +191,19 @@ type StatsOfTimeSeries struct {
 
 // manage timeseries of all pods
 type TimeSeriesContainer struct {
-	seriesMap          map[string]*SimpleTimeSeries // cpu metric
-	taskCntSeriesMap   map[string]*SimpleTimeSeries // task cnt of tiflash metric
-	defaultCapOfSeries int
-	mu                 sync.Mutex
-	promCli            *PromClient
+	seriesMap        map[string]*SimpleTimeSeries // cpu metric
+	taskCntSeriesMap map[string]*SimpleTimeSeries // task cnt of tiflash metric
+	// defaultCapOfSeries int
+	mu      sync.Mutex
+	promCli *PromClient
 }
 
-func NewTimeSeriesContainer(defaultCapOfSeries int, promCli *PromClient) *TimeSeriesContainer {
+func NewTimeSeriesContainer(promCli *PromClient) *TimeSeriesContainer {
 	return &TimeSeriesContainer{
-		seriesMap:          make(map[string]*SimpleTimeSeries),
-		defaultCapOfSeries: defaultCapOfSeries,
-		promCli:            promCli,
+		seriesMap:        make(map[string]*SimpleTimeSeries),
+		taskCntSeriesMap: make(map[string]*SimpleTimeSeries),
+		// defaultCapOfSeries: defaultCapOfSeries,
+		promCli: promCli,
 	}
 }
 
@@ -206,9 +211,9 @@ func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string, metricsTopic Me
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	seriesMap := c.SeriesMap(metricsTopic)
-	if seriesMap == nil {
-		return nil
-	}
+	// if seriesMap == nil {
+	// 	return nil
+	// }
 	v, ok := seriesMap[podname]
 	if !ok {
 		return nil
@@ -218,21 +223,29 @@ func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string, metricsTopic Me
 	return ret
 }
 
-func (c *TimeSeriesContainer) Dump(podname string) {
+func (c *TimeSeriesContainer) Dump(podname string, topic MetricsTopic) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	v, ok := c.seriesMap[podname]
+	seriesMap := c.SeriesMap(topic)
+	// if seriesMap == nil {
+	// 	return
+	// }
+	v, ok := seriesMap[podname]
 	if !ok {
 		return
 	}
-	v.Dump(podname)
+	v.Dump(podname, topic)
 }
 
-func (c *TimeSeriesContainer) DumpAll() {
+func (c *TimeSeriesContainer) DumpAll(topic MetricsTopic) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for podname, v := range c.seriesMap {
-		v.Dump(podname)
+	seriesMap := c.SeriesMap(topic)
+	// if seriesMap == nil {
+	// 	return
+	// }
+	for podname, v := range seriesMap {
+		v.Dump(podname, topic)
 	}
 }
 
@@ -240,9 +253,9 @@ func (c *TimeSeriesContainer) GetSnapshotOfTimeSeries(podname string, metricsTop
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	seriesMap := c.SeriesMap(metricsTopic)
-	if seriesMap == nil {
-		return nil
-	}
+	// if seriesMap == nil {
+	// 	return nil
+	// }
 	v, ok := seriesMap[podname]
 	if !ok {
 		return nil
@@ -305,27 +318,27 @@ type TimeSeriesWriter interface {
 	InsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int) bool /* is_success */
 }
 
-// TODO depricated
-func (cur *TimeSeriesContainer) Insert(key string, time int64, values []float64) bool /* is_success */ {
-	cur.mu.Lock()
-	defer cur.mu.Unlock()
-	val, ok := cur.seriesMap[key]
-	if !ok {
-		val = &SimpleTimeSeries{
-			series:      list.New(),
-			Statistics:  make([]AvgSigma, CapacityOfStaticsAvgSigma),
-			cap:         cur.defaultCapOfSeries, /// TODO , assign from user's config
-			intervalSec: cur.defaultCapOfSeries * MetricResolutionSeconds,
-		}
-		cur.seriesMap[key] = val
-	}
-	if time > val.max_time { // only insert point with larger timestamp
-		val.append(time, values)
-		return true
-	} else {
-		return false
-	}
-}
+// // TODO depricated
+// func (cur *TimeSeriesContainer) Insert(key string, time int64, values []float64) bool /* is_success */ {
+// 	cur.mu.Lock()
+// 	defer cur.mu.Unlock()
+// 	val, ok := cur.seriesMap[key]
+// 	if !ok {
+// 		val = &SimpleTimeSeries{
+// 			series:      list.New(),
+// 			Statistics:  make([]AvgSigma, CapacityOfStaticsAvgSigma),
+// 			cap:         cur.defaultCapOfSeries, /// TODO , assign from user's config
+// 			intervalSec: cur.defaultCapOfSeries * MetricResolutionSeconds,
+// 		}
+// 		cur.seriesMap[key] = val
+// 	}
+// 	if time > val.max_time { // only insert point with larger timestamp
+// 		val.append(time, values)
+// 		return true
+// 	} else {
+// 		return false
+// 	}
+// }
 
 type MetricsTopic int
 
@@ -333,6 +346,16 @@ const (
 	MetricsTopicCpu     = MetricsTopic(0)
 	MetricsTopicTaskCnt = MetricsTopic(1)
 )
+
+func (c *MetricsTopic) String() string {
+	switch *c {
+	case MetricsTopicCpu:
+		return "cpu"
+	case MetricsTopicTaskCnt:
+		return "taskcnt"
+	}
+	return "others"
+}
 
 func (cur *TimeSeriesContainer) SeriesMap(metricsTopic MetricsTopic) map[string]*SimpleTimeSeries {
 	if metricsTopic == MetricsTopicCpu {
@@ -348,9 +371,9 @@ func (cur *TimeSeriesContainer) CommonInsertWithUserCfg(key string, time int64, 
 	cur.mu.Lock()
 	defer cur.mu.Unlock()
 	seriesMap := cur.SeriesMap(metricsTopic)
-	if seriesMap == nil {
-		return false
-	}
+	// if seriesMap == nil {
+	// 	return false
+	// }
 	val, ok := seriesMap[key]
 
 	if !ok {
@@ -595,7 +618,7 @@ func (c *PromClient) QueryComputeTask() (map[string]*TimeValPair, error) {
 	v1api := v1.NewAPI(c.cli)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	result, warnings, err := v1api.Query(ctx, "sum by(pod) (sum_over_time(tiflash_coprocessor_handling_request_count{job=\"kube_sd_tiflash_proc\",metrics_topic=\"tiflash\", pod!=\"\"}[1m]))", time.Now(), v1.WithTimeout(5*time.Second))
+	result, warnings, err := v1api.Query(ctx, "sum by(pod) (sum_over_time(tiflash_coprocessor_handling_request_count{job=\"kube_sd_tiflash_proc\",metrics_topic=\"tiflash\", pod!=\"\"}[30s]))", time.Now(), v1.WithTimeout(5*time.Second))
 	if err != nil {
 		log.Printf("[error][PromClient] querying Prometheus error: %v\n", err)
 		return nil, err

@@ -47,14 +47,15 @@ func (c *MockTenantInfoProvider) InsertWithUserCfg(key string, time int64, value
 	// return true
 }
 
-func main() {
+func main2() {
 
 	mtip := MockTenantInfoProvider{
 		podMap: make(map[string]int),
 	}
 	// // RangeQuery(5*time.Minute, 10*time.Second)
 	cli, err := autoscale.NewPromClient("http://localhost:16292")
-	tsContainer := autoscale.NewTimeSeriesContainer(30, cli)
+
+	tsContainer := autoscale.NewTimeSeriesContainer(cli)
 	mtip.tsContainer = tsContainer
 	if err != nil {
 		panic(err)
@@ -62,6 +63,14 @@ func main() {
 	cli.RangeQueryCpu(time.Hour, 10*time.Second, &mtip, &mtip)
 	for k, v := range mtip.podMap {
 		log.Printf("pod:%v call_cnt:%v\n", k, v)
-		mtip.tsContainer.Dump(k)
+		mtip.tsContainer.Dump(k, autoscale.MetricsTopicCpu)
 	}
+}
+
+func main() {
+	cli, err := autoscale.NewPromClient("http://localhost:16292")
+	if err != nil {
+		panic(err)
+	}
+	cli.QueryComputeTask()
 }

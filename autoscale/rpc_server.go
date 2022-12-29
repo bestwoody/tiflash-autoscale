@@ -45,7 +45,7 @@ func GetTopology(tidbClusterID string) []string {
 }
 
 func RunGrpcServer() {
-	listener, err := net.Listen("tcp", "8082")
+	listener, err := net.Listen("tcp", ":8091")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
