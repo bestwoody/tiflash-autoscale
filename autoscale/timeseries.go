@@ -57,6 +57,54 @@ type AvgSigma struct {
 	cnt int64
 }
 
+// description of SimpleTimeSeries
+type DescOfTenantTimeSeries struct {
+	MaxOfPodMaxTime        int64
+	MinOfPodMaxTime        int64
+	MaxOfPodMinTime        int64
+	MinOfPodMinTime        int64
+	MaxOfPodTimeseriesSize int
+	MinOfPodTimeseriesSize int
+	SumOfPodTimeseriesSize int
+	PodCnt                 int
+	MinIntervalSec         int
+	MaxIntervalSec         int
+}
+
+// description of SimpleTimeSeries
+type DescOfPodTimeSeries struct {
+	MaxTime     int64
+	MinTime     int64
+	Size        int
+	IntervalSec int
+}
+
+func (c *DescOfTenantTimeSeries) Agg(o *DescOfPodTimeSeries) {
+	c.MinOfPodMinTime = Min(c.MinOfPodMinTime, o.MinTime)
+	c.MaxOfPodMinTime = Max(c.MaxOfPodMinTime, o.MinTime)
+	c.MinOfPodMaxTime = Min(c.MinOfPodMaxTime, o.MaxTime)
+	c.MaxOfPodMaxTime = Max(c.MaxOfPodMaxTime, o.MaxTime)
+	c.SumOfPodTimeseriesSize += o.Size
+	c.MaxOfPodTimeseriesSize = MaxInt(c.MaxOfPodTimeseriesSize, o.Size)
+	c.MinOfPodTimeseriesSize = MinInt(c.MinOfPodTimeseriesSize, o.Size)
+	c.PodCnt += 1
+	c.MinIntervalSec = MinInt(c.MinIntervalSec, o.IntervalSec)
+	c.MaxIntervalSec = MaxInt(c.MaxIntervalSec, o.IntervalSec)
+}
+
+func (c *DescOfTenantTimeSeries) Init(o *DescOfPodTimeSeries) {
+	c.MinOfPodMinTime = o.MinTime
+	c.MaxOfPodMinTime = o.MinTime
+	c.MinOfPodMaxTime = o.MaxTime
+	c.MaxOfPodMaxTime = o.MaxTime
+	c.SumOfPodTimeseriesSize = o.Size
+	c.MaxOfPodTimeseriesSize = o.Size
+	c.MinOfPodTimeseriesSize = o.Size
+	c.PodCnt = 1
+	c.MinIntervalSec = o.IntervalSec
+	c.MaxIntervalSec = o.IntervalSec
+}
+
 type SimpleTimeSeries struct {
 	series     *list.List // elem type: TimeValues
 	Statistics []AvgSigma
@@ -207,7 +255,7 @@ func NewTimeSeriesContainer(promCli *PromClient) *TimeSeriesContainer {
 	}
 }
 
-func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string, metricsTopic MetricsTopic) []AvgSigma {
+func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string, metricsTopic MetricsTopic) ([]AvgSigma, *DescOfPodTimeSeries) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	seriesMap := c.SeriesMap(metricsTopic)
@@ -216,11 +264,18 @@ func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string, metricsTopic Me
 	// }
 	v, ok := seriesMap[podname]
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	ret := make([]AvgSigma, CapacityOfStaticsAvgSigma)
 	Merge(ret, v.Statistics)
-	return ret
+	minT, maxT := v.getMinMaxTime()
+	stats := &DescOfPodTimeSeries{
+		MinTime:     minT,
+		MaxTime:     maxT,
+		Size:        v.series.Len(),
+		IntervalSec: v.intervalSec,
+	}
+	return ret, stats
 }
 
 func (c *TimeSeriesContainer) Dump(podname string, topic MetricsTopic) {

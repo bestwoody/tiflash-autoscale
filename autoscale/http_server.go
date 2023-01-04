@@ -218,6 +218,7 @@ func RunAutoscaleHttpServer() {
 	http.HandleFunc("/setstate", SetStateServer)
 	http.HandleFunc("/getstate", GetStateServer)
 	http.HandleFunc("/metrics", GetMetricsFromNode)
+
 	log.Printf("[HTTP]ListenAndServe 8081")
 	err := http.ListenAndServe(":8081", nil)
 	if err != nil {

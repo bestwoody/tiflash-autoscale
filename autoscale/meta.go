@@ -440,7 +440,7 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 
 	/// DO real pods resize!!!!
 	delta := failCntTotal + p.SoftLimit - (int(p.cntOfPending.Load()) + p.WarmedPods.GetCntOfPods())
-	log.Printf("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v valid:%v \n", failCntTotal, delta, p.cntOfPending, p.WarmedPods.GetCntOfPods())
+	log.Printf("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v valid:%v \n", failCntTotal, delta, p.cntOfPending.Load(), p.WarmedPods.GetCntOfPods())
 	p.mu.Unlock()
 
 	// var ret *v1alpha1.CloneSet
@@ -504,6 +504,7 @@ func (p *PrewarmPool) getWarmedPods(tenantName string, cnt int) ([]*PodDesc, int
 }
 
 func (p *PrewarmPool) putWarmedPod(tenantName string, pod *PodDesc, isNewPod bool) {
+	log.Printf("[info][PrewarmPool]put warmed pod tenant: %v pod: %v newPod:%v\n", tenantName, pod.Name, isNewPod)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if isNewPod {
@@ -1075,6 +1076,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 		if state != TenantStateResuming {
 			// ERROR!!!
 			log.Printf("[error][removePodFromTenant] failed to resume: 'tenantDesc.GetState() != TenantStateResuming', state:%v \n ", state)
+			c.mu.Unlock()
 			return -1
 		}
 	} else {
@@ -1082,6 +1084,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 		if state != TenantStateResumed {
 			// ERROR!!!
 			log.Printf("[error][addPodIntoTenant] failed: 'tenantDesc.GetState() != TenantStateResumed', state:%v \n ", state)
+			c.mu.Unlock()
 			return -1
 		}
 	}
@@ -1158,6 +1161,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPaus
 		if state != TenantStatePausing {
 			// ERROR!!!
 			log.Printf("[error][removePodFromTenant] failed to pause: 'tenantDesc.GetState() != TenantStatePausing', state:%v \n ", state)
+			c.mu.Unlock()
 			return -1
 		}
 	} else {
@@ -1165,6 +1169,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPaus
 		if state != TenantStateResumed {
 			// ERROR!!!
 			log.Printf("[error][removePodFromTenant] failed: 'tenantDesc.GetState() != TenantStateResumed', state:%v \n ", state)
+			c.mu.Unlock()
 			return -1
 		}
 	}
@@ -1320,66 +1325,56 @@ func (c *AutoScaleMeta) UpdateTenant4Test(podName string, newTenant string) bool
 	return true
 }
 
-func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSeriesContainer, caller string, metricsTopic MetricsTopic) ([]AvgSigma, map[string]float64 /* avg_map */, map[string]int64 /* cnt_map*/) {
+func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSeriesContainer, caller string, metricsTopic MetricsTopic) ([]AvgSigma, map[string]float64 /* avg_map */, map[string]int64 /* cnt_map*/, map[string]*DescOfPodTimeSeries, *DescOfTenantTimeSeries) {
 	c.mu.Lock()
 
 	tenantDesc, ok := c.tenantMap[tenantName]
 	if !ok {
 		c.mu.Unlock()
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	} else {
 		podsOfTenant := tenantDesc.GetPodNames()
 		c.mu.Unlock()
 		podCpuMap := make(map[string]float64)
 		podPointCntMap := make(map[string]int64)
+		descOfTimeSeriesMap := make(map[string]*DescOfPodTimeSeries)
 		ret := make([]AvgSigma, CapacityOfStaticsAvgSigma)
+		var metricDescOfTenant DescOfTenantTimeSeries
 		for _, podName := range podsOfTenant {
 
 			// // FOR DEBUG
 			// tsc.Dump(podName)
 
-			// snapshot := tsc.GetSnapshotOfTimeSeries(podName)
-			// if snapshot != nil {
-			// 	log.Printf("[%v.ComputeStatisticsOfTenant]tenant: %v pod: %v mint,maxt: %v ~ %v statistics: cpu: %v %v mem: %v %v\n",
-			// 		caller,
-			// 		tenantName, podName,
-			// 		snapshot.MinTime, snapshot.MaxTime,
-			// 		snapshot.AvgOfCpu,
-			// 		snapshot.SampleCntOfCpu,
-			// 		snapshot.AvgOfMem,
-			// 		snapshot.SampleCntOfMem,
-			// 	)
-			// } else {
-			// 	stats := tsc.GetStatisticsOfPod(podName)
-			// 	if stats == nil {
-			// 		log.Printf("[%v.ComputeStatisticsOfTenant]tenant: %v pod: %v snapshot: nil\n", caller,
-			// 			tenantName, podName)
-			// 	} else {
-			// 		log.Printf("[%v.ComputeStatisticsOfTenant]tenant: %v pod: %v mint,maxt: nil, statistics: cpu: %v %v mem: %v %v\n", caller,
-			// 			tenantName, podName, stats[0].Avg(), stats[0].Cnt(), stats[1].Avg(), stats[1].Cnt())
-			// 	}
-			// }
-			statsOfPod := tsc.GetStatisticsOfPod(podName, metricsTopic)
+			statsOfPod, descOfTimeSeries := tsc.GetStatisticsOfPod(podName, metricsTopic)
 			if statsOfPod == nil {
 				statsOfPod = make([]AvgSigma, CapacityOfStaticsAvgSigma)
+			} else {
+				if metricDescOfTenant.PodCnt == 0 {
+					metricDescOfTenant.Init(descOfTimeSeries)
+				} else {
+					metricDescOfTenant.Agg(descOfTimeSeries)
+				}
 			}
 			// TODO hope for a better idea to handle case of new Pod without metrics
 			if len(statsOfPod) > 0 {
 				// podCpuMap[podName] = statsOfPod[0].Avg()
 				log.Printf("[debug]avg %v of pod %v : %v, %v\n", metricsTopic.String(), podName, statsOfPod[0].Avg(), statsOfPod[0].Cnt())
 			}
-			for i := range statsOfPod {
-				statsOfPod[i] = AvgSigma{statsOfPod[i].Avg(), 1}
+			if metricsTopic == MetricsTopicCpu {
+				for i := range statsOfPod { // make weight even between pods
+					statsOfPod[i] = AvgSigma{statsOfPod[i].Avg(), 1}
+				}
 			}
 			if len(statsOfPod) > 0 {
 				podCpuMap[podName] = statsOfPod[0].Avg()
 				podPointCntMap[podName] = statsOfPod[0].Cnt()
+				descOfTimeSeriesMap[podName] = descOfTimeSeries
 				// log.Printf("[debug]avg cpu of pod %v : %v, %v\n", podName, statsOfPod[0].Avg(), statsOfPod[0].Cnt())
 			}
 			Merge(ret, statsOfPod)
 
 		}
-		return ret, podCpuMap, podPointCntMap
+		return ret, podCpuMap, podPointCntMap, descOfTimeSeriesMap, &metricDescOfTenant
 	}
 }
 
