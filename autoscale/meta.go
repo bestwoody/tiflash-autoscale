@@ -440,7 +440,9 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 
 	/// DO real pods resize!!!!
 	delta := failCntTotal + p.SoftLimit - (int(p.cntOfPending.Load()) + p.WarmedPods.GetCntOfPods())
-	Logger.Infof("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v valid:%v ", failCntTotal, delta, p.cntOfPending.Load(), p.WarmedPods.GetCntOfPods())
+	if delta != 0 {
+		Logger.Infof("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v valid:%v ", failCntTotal, delta, p.cntOfPending.Load(), p.WarmedPods.GetCntOfPods())
+	}
 	p.mu.Unlock()
 
 	// var ret *v1alpha1.CloneSet
@@ -504,7 +506,7 @@ func (p *PrewarmPool) getWarmedPods(tenantName string, cnt int) ([]*PodDesc, int
 }
 
 func (p *PrewarmPool) putWarmedPod(tenantName string, pod *PodDesc, isNewPod bool) {
-	Logger.Infof("[info][PrewarmPool]put warmed pod tenant: %v pod: %v newPod:%v", tenantName, pod.Name, isNewPod)
+	Logger.Infof("[PrewarmPool]put warmed pod tenant: %v pod: %v newPod:%v", tenantName, pod.Name, isNewPod)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if isNewPod {

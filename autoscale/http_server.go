@@ -183,7 +183,7 @@ func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*Po
 func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	node := req.FormValue("node")
-	Logger.Infof("[info][http]GetMetricsFromNode, node:%v", node)
+	Logger.Infof("[http]GetMetricsFromNode, node:%v", node)
 	if node == "" {
 		return
 	}

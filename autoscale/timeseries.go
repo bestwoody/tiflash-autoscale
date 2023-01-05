@@ -651,7 +651,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 						time:  last.Timestamp.Unix(),
 						value: rate,
 					}
-					Logger.Infof("[info][Prom]query cpu, key: %v time: %v val: %v", podName, last.Timestamp.Unix(), rate)
+					Logger.Infof("[Prom]query cpu, key: %v time: %v val: %v", podName, last.Timestamp.Unix(), rate)
 				}
 
 			} else {
@@ -662,7 +662,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 		Logger.Errorf("[error][Prom]type cast fail when query cpu, real result:%v ", result)
 	}
 
-	Logger.Infof("[info][Prom]query cpu, ret: %v, size:%v ", ret, len(ret))
+	Logger.Infof("[Prom]query cpu, ret: %v, size:%v ", ret, len(ret))
 	return ret, nil
 }
 
@@ -694,12 +694,12 @@ func (c *PromClient) QueryComputeTask() (map[string]*TimeValPair, error) {
 				time:  sample.Timestamp.Unix(),
 				value: float64(sample.Value),
 			}
-			Logger.Infof("[info][Prom]query compute_task_cnt, key: %v time: %v val: %v", podName, sample.Timestamp.Unix(), float64(sample.Value))
+			Logger.Infof("[Prom]query compute_task_cnt, key: %v time: %v val: %v", podName, sample.Timestamp.Unix(), float64(sample.Value))
 		}
 	} else {
 		Logger.Errorf("[error][Prom]type cast fail when query compute_task_cnt, real result:%v ", result)
 	}
 
-	Logger.Infof("[info][Prom]query compute_task_cnt, ret: %v, size:%v ", ret, len(ret))
+	Logger.Infof("[Prom]query compute_task_cnt, ret: %v, size:%v ", ret, len(ret))
 	return ret, nil
 }

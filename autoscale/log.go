@@ -13,7 +13,7 @@ var Logger *zap.SugaredLogger
 func InitZapLogger() {
 
 	customTimeEncoder := func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-		enc.AppendString("[" + t.Format("2006-01-02 15:04:05.000Z0700") + "]")
+		enc.AppendString("[" + t.Format("2006-01-02 15:04:05.000Z07:00") + "]")
 	}
 
 	customLevelEncoder := func(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
