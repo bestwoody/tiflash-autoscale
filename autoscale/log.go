@@ -1,6 +1,8 @@
 package autoscale
 
 import (
+	"time"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -9,6 +11,19 @@ var RawLogger *zap.Logger
 var Logger *zap.SugaredLogger
 
 func InitZapLogger() {
+
+	customTimeEncoder := func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString("[" + t.Format("2006-01-02 15:04:05.000Z0700") + "]")
+	}
+
+	customLevelEncoder := func(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString("[" + level.CapitalString() + "]")
+	}
+
+	customCallerEncoder := func(caller zapcore.EntryCaller, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString("[" + caller.TrimmedPath() + "]")
+	}
+
 	RawLogger, err := zap.Config{
 		Level:       zap.NewAtomicLevelAt(zap.InfoLevel),
 		Development: false,
@@ -18,18 +33,19 @@ func InitZapLogger() {
 		},
 		Encoding: "console",
 		EncoderConfig: zapcore.EncoderConfig{
-			TimeKey:        "ts",
-			LevelKey:       "level",
-			NameKey:        "logger",
-			CallerKey:      "caller",
-			FunctionKey:    zapcore.OmitKey,
-			MessageKey:     "msg",
-			StacktraceKey:  "stacktrace",
-			LineEnding:     zapcore.DefaultLineEnding,
-			EncodeLevel:    zapcore.LowercaseLevelEncoder,
-			EncodeTime:     zapcore.ISO8601TimeEncoder,
-			EncodeDuration: zapcore.SecondsDurationEncoder,
-			EncodeCaller:   zapcore.ShortCallerEncoder,
+			TimeKey:          "ts",
+			LevelKey:         "level",
+			NameKey:          "logger",
+			CallerKey:        "caller",
+			FunctionKey:      zapcore.OmitKey,
+			MessageKey:       "msg",
+			StacktraceKey:    "stacktrace",
+			ConsoleSeparator: " ",
+			LineEnding:       zapcore.DefaultLineEnding,
+			EncodeLevel:      customLevelEncoder,
+			EncodeTime:       customTimeEncoder,
+			EncodeDuration:   zapcore.SecondsDurationEncoder,
+			EncodeCaller:     customCallerEncoder,
 		},
 		OutputPaths:      []string{"stderr"},
 		ErrorOutputPaths: []string{"stderr"},
