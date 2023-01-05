@@ -1099,31 +1099,39 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 
 	statesDeltaMap := make(map[string]string)
 	undoList := make([]*PodDesc, 0, addCnt)
+	var localMu sync.Mutex
+	var apiWg sync.WaitGroup
+	apiWg.Add(len(podsToAssign))
 	for _, v := range podsToAssign {
 		// TODO async call grpc assign api
-		// TODO go func() & wg.wait()
-		resp, err := v.AssignTenantWithMockConf(tenant)
-		if err != nil || resp.HasErr {
-			// HandleAssignError
-			if err != nil { // grpc error, undo
-				log.Printf("[error][AutoScaleMeta::addPodIntoTenant] grpc error, undo , err: %v\n", err.Error())
-				undoList = append(undoList, v)
-			} else { // app api error , correct its state
-				log.Printf("[error][AutoScaleMeta::addPodIntoTenant] app api error , err: %v\n", resp.ErrInfo)
+		go func(v *PodDesc) {
+			defer apiWg.Done()
+			resp, err := v.AssignTenantWithMockConf(tenant)
+			localMu.Lock()
+			defer localMu.Unlock()
+			if err != nil || resp.HasErr {
+				// HandleAssignError
+				if err != nil { // grpc error, undo
+					log.Printf("[error][AutoScaleMeta::addPodIntoTenant] grpc error, undo , err: %v\n", err.Error())
+					undoList = append(undoList, v)
+				} else { // app api error , correct its state
+					log.Printf("[error][AutoScaleMeta::addPodIntoTenant] app api error , err: %v\n", resp.ErrInfo)
+					c.mu.Lock()
+					c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
+					c.mu.Unlock()
+				}
+
+			} else {
 				c.mu.Lock()
-				c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
+				statesDeltaMap[v.Name] = ConfigMapPodStateStr(CmRnPodStateAssigned, tenant)
+				// clear dirty metrics
+				c.tenantMap[tenant].SetPodWithTenantInfo(v.Name, v, resp.StartTime) // TODO Do we need setPod in early for-loop
+				tsContainer.ResetMetricsOfPod(v.Name)
 				c.mu.Unlock()
 			}
-
-		} else {
-			c.mu.Lock()
-			statesDeltaMap[v.Name] = ConfigMapPodStateStr(CmRnPodStateAssigned, tenant)
-			// clear dirty metrics
-			c.tenantMap[tenant].SetPodWithTenantInfo(v.Name, v, resp.StartTime) // TODO Do we need setPod in early for-loop
-			tsContainer.ResetMetricsOfPod(v.Name)
-			c.mu.Unlock()
-		}
+		}(v)
 	}
+	apiWg.Wait()
 	if len(undoList) != 0 {
 		log.Printf("[AutoScaleMeta::addPodIntoTenant] len(undoList) : %v\n", len(undoList))
 	}
@@ -1190,28 +1198,37 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPaus
 	c.mu.Unlock()
 	undoList := make([]*PodDesc, 0, removeCnt)
 	statesDeltaMap := make(map[string]string)
+	var localMu sync.Mutex
+	var apiWg sync.WaitGroup
+	apiWg.Add(len(podsToUnassign))
 	for _, v := range podsToUnassign {
 		// TODO async call grpc unassign api
-		// TODO go func() & wg.wait()
-		resp, err := v.UnassignTenantWithMockConf(tenant)
-		if err != nil || resp.HasErr {
-			// HandleUnassignError
-			if err != nil { // grpc error, undo
-				log.Printf("[error][AutoScaleMeta::removePodFromTenant] grpc error, undo , err: %v\n", err.Error())
-				undoList = append(undoList, v)
-			} else { // app api error , correct its state
-				log.Printf("[error][AutoScaleMeta::removePodFromTenant] app api error, undo , err: %v\n", resp.ErrInfo)
+		go func(v *PodDesc) {
+			defer apiWg.Done()
+			resp, err := v.UnassignTenantWithMockConf(tenant)
+			localMu.Lock()
+			defer localMu.Unlock()
+			if err != nil || resp.HasErr {
+				// HandleUnassignError
+				if err != nil { // grpc error, undo
+					log.Printf("[error][AutoScaleMeta::removePodFromTenant] grpc error, undo , err: %v\n", err.Error())
+					undoList = append(undoList, v)
+				} else { // app api error , correct its state
+					log.Printf("[error][AutoScaleMeta::removePodFromTenant] app api error, undo , err: %v\n", resp.ErrInfo)
+					c.mu.Lock()
+					c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
+					c.mu.Unlock()
+				}
+			} else {
 				c.mu.Lock()
-				c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
+				statesDeltaMap[v.Name] = ConfigMapPodStateStr(CmRnPodStateUnassigned, "")
+				c.PrewarmPool.putWarmedPod(tenant, v, false)
 				c.mu.Unlock()
 			}
-		} else {
-			c.mu.Lock()
-			statesDeltaMap[v.Name] = ConfigMapPodStateStr(CmRnPodStateUnassigned, "")
-			c.PrewarmPool.putWarmedPod(tenant, v, false)
-			c.mu.Unlock()
-		}
+		}(v)
+
 	}
+	apiWg.Wait()
 	// undo failed works
 	c.mu.Lock()
 	for _, v := range undoList {
