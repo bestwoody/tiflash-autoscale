@@ -493,7 +493,7 @@ func NewPromClientDefault() (*PromClient, error) {
 		Address: "http://as-prometheus.tiflash-autoscale.svc.cluster.local:16292",
 	})
 	if err != nil {
-		Logger.Infof("[error][PromClient] creating client: %v", err)
+		Logger.Errorf("[error][PromClient] creating client: %v", err)
 		return nil, err
 	}
 	return &PromClient{cli: client}, nil
@@ -504,7 +504,7 @@ func NewPromClient(addr string) (*PromClient, error) {
 		Address: addr,
 	})
 	if err != nil {
-		Logger.Infof("[error][PromClient] creating client: %v", err)
+		Logger.Errorf("[error][PromClient] creating client: %v", err)
 		return nil, err
 	}
 	return &PromClient{cli: client}, nil
@@ -515,7 +515,7 @@ func promplay() {
 		Address: "http://as-prometheus.tiflash-autoscale.svc.cluster.local:16292",
 	})
 	if err != nil {
-		Logger.Infof("Error creating client: %v", err)
+		Logger.Errorf("Error creating client: %v", err)
 		os.Exit(1)
 	}
 
@@ -524,7 +524,7 @@ func promplay() {
 	defer cancel()
 	result, warnings, err := v1api.Query(ctx, "up", time.Now(), v1.WithTimeout(5*time.Second))
 	if err != nil {
-		Logger.Infof("Error querying Prometheus: %v", err)
+		Logger.Errorf("Error querying Prometheus: %v", err)
 		os.Exit(1)
 	}
 	if len(warnings) > 0 {
@@ -561,11 +561,11 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
 	result, warnings, err := v1api.QueryRange(ctx, "avg by(pod) (irate(container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]))", r, v1.WithTimeout(5*time.Second))
 	if err != nil {
-		Logger.Infof("Error querying Prometheus: %v", err)
+		Logger.Errorf("Error querying Prometheus: %v", err)
 		return nil, err
 	}
 	if len(warnings) > 0 {
-		Logger.Infof("Warnings: %v", warnings)
+		Logger.Warnf("Warnings: %v", warnings)
 	}
 	Logger.Infof("Result:\n%v", result)
 
