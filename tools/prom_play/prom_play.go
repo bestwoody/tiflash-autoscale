@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/tikv/pd/autoscale"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type TestIntf interface {
@@ -67,10 +69,51 @@ func main2() {
 	}
 }
 
+func NewZapLogger() (*zap.Logger, error) {
+	return zap.Config{
+		Level:       zap.NewAtomicLevelAt(zap.InfoLevel),
+		Development: false,
+		Sampling: &zap.SamplingConfig{
+			Initial:    100,
+			Thereafter: 100,
+		},
+		Encoding: "console",
+		EncoderConfig: zapcore.EncoderConfig{
+			TimeKey:        "ts",
+			LevelKey:       "level",
+			NameKey:        "logger",
+			CallerKey:      "caller",
+			FunctionKey:    zapcore.OmitKey,
+			MessageKey:     "msg",
+			StacktraceKey:  "stacktrace",
+			LineEnding:     zapcore.DefaultLineEnding,
+			EncodeLevel:    zapcore.LowercaseLevelEncoder,
+			EncodeTime:     zapcore.ISO8601TimeEncoder,
+			EncodeDuration: zapcore.SecondsDurationEncoder,
+			EncodeCaller:   zapcore.ShortCallerEncoder,
+		},
+		OutputPaths:      []string{"stderr"},
+		ErrorOutputPaths: []string{"stderr"},
+	}.Build()
+}
+
+func zapLogTest() {
+	logger, _ := NewZapLogger()
+	defer logger.Sync() // flushes buffer, if any
+	sugar := logger.Sugar()
+	sugar.Infow("failed to fetch URL",
+		// Structured context as loosely typed key-value pairs.
+		"url", "urlval",
+		"attempt", 3,
+		"backoff", time.Second,
+	)
+	sugar.Infof("Failed to fetch URL: %s", "hehe")
+}
 func main() {
-	cli, err := autoscale.NewPromClient("http://localhost:16292")
-	if err != nil {
-		panic(err)
-	}
-	cli.QueryComputeTask()
+	zapLogTest()
+	// cli, err := autoscale.NewPromClient("http://localhost:16292")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// cli.QueryComputeTask()
 }

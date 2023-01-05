@@ -394,6 +394,8 @@ func main() {
 	// configmapGetAndUpdateExample()
 	// configmapPlayGround()
 	// configmapPatchExample()
+	autoscale.InitZapLogger()
+	defer autoscale.RawLogger.Sync() // flushes buffer, if any
 
 	log.Printf("env.%v: %v\n", EnvKeyPdAddr, os.Getenv(EnvKeyPdAddr))
 	log.Printf("env.%v: %v\n", EnvKeyTidbStatusAddr, os.Getenv(EnvKeyTidbStatusAddr))
