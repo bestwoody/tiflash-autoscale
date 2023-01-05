@@ -18,18 +18,18 @@ func TestAwsSns(t *testing.T) {
 	ts := now.UnixNano()
 	err = awsSnsManager.TryToPublishTopology("auto-scale", ts, []string{"a"})
 	if err != nil {
-		t.Errorf("[error]Create topic failed, err: %+v\n", err.Error())
+		t.Errorf("[error]Create topic failed, err: %+v", err.Error())
 		return
 	}
 }
 
 //func test(awsSnsManager *AwsSnsManager, i int) {
-//	log.Printf("start func: %d", i)
+//	Logger.Infof("start func: %d", i)
 //	now := time.Now()
 //	ts := now.UnixNano()
 //	err := awsSnsManager.TryToPublishTopology(strconv.Itoa(i), ts, []string{"a"})
 //	if err != nil {
-//		log.Printf("[error]Create topic failed, err: %+v\n", err.Error())
+//		Logger.Errorf("[error]Create topic failed, err: %+v", err.Error())
 //		return
 //	}
 //}

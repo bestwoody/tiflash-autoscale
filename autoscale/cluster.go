@@ -107,7 +107,7 @@ func (c *ClusterManager) initRangeMetricsFromPromethues(intervalSec int) error {
 	log.Println("[info][initRangeMetricsFromPromethues] range query cpu")
 	_, err := c.PromClient.RangeQueryCpu(time.Duration(intervalSec)*time.Second, 15*time.Second, c.AutoScaleMeta, c.tsContainer)
 	if err != nil {
-		log.Printf("[error][initRangeMetricsFromPromethues]QueryCpu fail, err:%v\n", err.Error())
+		Logger.Errorf("[error][initRangeMetricsFromPromethues]QueryCpu fail, err:%v", err.Error())
 		return err
 	}
 	tsContainer.DumpAll(MetricsTopicCpu)
@@ -115,7 +115,7 @@ func (c *ClusterManager) initRangeMetricsFromPromethues(intervalSec int) error {
 	tArr := c.AutoScaleMeta.GetTenantNames()
 	for _, tName := range tArr {
 		stats, podCpuMap, podPointCntMap, _, _ := as_meta.ComputeStatisticsOfTenant(tName, tsContainer, "collectMetrics", MetricsTopicCpu)
-		log.Printf("[initRangeMetricsFromPromethues]Tenant %v statistics: cpu: %v %v mem: %v %v, cpuMap:%+v valPointMap:%+v \n", tName,
+		Logger.Infof("[initRangeMetricsFromPromethues]Tenant %v statistics: cpu: %v %v mem: %v %v, cpuMap:%+v valPointMap:%+v ", tName,
 			stats[0].Avg(),
 			stats[0].Cnt(),
 			stats[1].Avg(),
@@ -148,7 +148,7 @@ func (c *ClusterManager) collectMetrics(metricsTopic MetricsTopic, fromMetricSer
 		if atomic.LoadInt32(&c.shutdown) != 0 {
 			return
 		}
-		log.Printf("[info][collectMetrics] query %v, fromMetricServer: %v", metricsTopic.String(), fromMetricServer)
+		Logger.Infof("[info][collectMetrics] query %v, fromMetricServer: %v", metricsTopic.String(), fromMetricServer)
 		lastQueryTs = time.Now().Unix()
 		var metricOfPods map[string]*TimeValPair
 		var err error
@@ -178,7 +178,7 @@ func (c *ClusterManager) collectMetrics(metricsTopic MetricsTopic, fromMetricSer
 		}
 
 		if err != nil {
-			log.Printf("[error][collectMetrics]fail to query metric:%v fromMetricServer:%v\n", metricsTopic.String(), fromMetricServer)
+			Logger.Errorf("[error][collectMetrics]fail to query metric:%v fromMetricServer:%v", metricsTopic.String(), fromMetricServer)
 			continue
 		}
 
@@ -192,7 +192,7 @@ func (c *ClusterManager) collectMetrics(metricsTopic MetricsTopic, fromMetricSer
 			}
 			tenantDesc := as_meta.GetTenantDesc(tenantName)
 			if tenantDesc == nil {
-				log.Printf("[error][collectMetrics]tenantdesc is nil, tenant:%v\n", tenantName)
+				Logger.Errorf("[error][collectMetrics]tenantdesc is nil, tenant:%v", tenantName)
 				continue
 			}
 			if metricsTopic == MetricsTopicCpu {
@@ -216,7 +216,7 @@ func (c *ClusterManager) collectMetrics(metricsTopic MetricsTopic, fromMetricSer
 				mint = Min(snapshot.MinTime, mint)
 				maxt = Max(snapshot.MaxTime, maxt)
 			} else {
-				log.Printf("[info][collectMetrics]GetSnapshotOfTimeSeries: snapshot is nil! tenant:%v pod:%v \n", tenantDesc.Name, podName)
+				Logger.Infof("[info][collectMetrics]GetSnapshotOfTimeSeries: snapshot is nil! tenant:%v pod:%v ", tenantDesc.Name, podName)
 			}
 
 		}
@@ -234,14 +234,14 @@ func (c *ClusterManager) collectMetrics(metricsTopic MetricsTopic, fromMetricSer
 				} else {
 					panic(fmt.Errorf("unknown MetricsTopic#3:%v", metricsTopic))
 				}
-				log.Printf("[info][collectMetrics]metricsTopic:%v Tenant %v statistics: val, cnt: %v %v time_range:%v~%v\n",
+				Logger.Infof("[info][collectMetrics]metricsTopic:%v Tenant %v statistics: val, cnt: %v %v time_range:%v~%v",
 					metricsTopic.String(), tName,
 					statVal,
 					stats[0].Cnt(),
 					mint, maxt,
 				)
 			} else {
-				log.Printf("[info][collectMetrics]ComputeStatisticsOfTenant: stats is nil! metricsTopic:%v tenant:%v \n",
+				Logger.Infof("[info][collectMetrics]ComputeStatisticsOfTenant: stats is nil! metricsTopic:%v tenant:%v ",
 					metricsTopic.String(), tName)
 			}
 		}
@@ -276,7 +276,7 @@ func (c *ClusterManager) manageAnalyzeTasks() {
 
 		lastTs = roundBeginTime.Unix()
 		tenants := c.AutoScaleMeta.GetTenants()
-		log.Printf("[info][manageAnalyzeTasks]round begin. tenants cnt: %v\n", len(tenants))
+		Logger.Infof("[info][manageAnalyzeTasks]round begin. tenants cnt: %v", len(tenants))
 		tenantSet := make(map[string]bool)
 		// create tasks for new tenants
 		crtCnt := 0
@@ -302,7 +302,7 @@ func (c *ClusterManager) manageAnalyzeTasks() {
 			return true
 		})
 
-		log.Printf("[info][manageAnalyzeTasks]round end. tenants cnt: %v , cnt_of_new_tenants: %v cnt_of_del_tenents:%v, cost %vms\n", len(tenants), crtCnt, delCnt, time.Now().UnixMilli()-roundBeginTime.UnixMilli())
+		Logger.Infof("[info][manageAnalyzeTasks]round end. tenants cnt: %v , cnt_of_new_tenants: %v cnt_of_del_tenents:%v, cost %vms", len(tenants), crtCnt, delCnt, time.Now().UnixMilli()-roundBeginTime.UnixMilli())
 	}
 }
 
@@ -319,7 +319,7 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 		lastTs = roundBeginTime.Unix()
 		tenant := task.tenant
 
-		log.Printf("[info][analyzeTaskLoop][%v]round begin. tenant: %v\n", tenant.Name, tenant.Name)
+		Logger.Infof("[info][analyzeTaskLoop][%v]round begin. tenant: %v", tenant.Name, tenant.Name)
 
 		//anto scale/pause analyze of tenant
 		if tenant.GetState() != TenantStateResumed { // tenant not available
@@ -340,23 +340,23 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 			if tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoPauseIntervalSec)+30 {
 				totalTaskCnt := taskCntStats[0].Sum()
 				if totalTaskCnt < 1 { //test is zero, since it's a float, "< 1" may be better
-					log.Printf("[info][analyzeTaskLoop][%v]auto pause, tenant: %v\n", tenant.Name, tenant.Name)
+					Logger.Infof("[info][analyzeTaskLoop][%v]auto pause, tenant: %v", tenant.Name, tenant.Name)
 					c.Pause(tenant.Name)
 					// continue //skip auto scale TODO revert
 				}
 			} else {
-				log.Printf("[info][analyzeTaskLoop][%v]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   \n", tenant.Name,
+				Logger.Infof("[info][analyzeTaskLoop][%v]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ", tenant.Name,
 					tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoPauseIntervalSec)
 			}
 
 		} else {
-			log.Printf("[error][analyzeTaskLoop][%v]empty metric: TaskCnt , tenant: %v\n", tenant.Name, tenant.Name)
+			Logger.Errorf("[error][analyzeTaskLoop][%v]empty metric: TaskCnt , tenant: %v", tenant.Name, tenant.Name)
 		}
 
 		// Auto Scale
 		cntOfPods := tenant.GetCntOfPods()
 		if cntOfPods < tenant.GetMinCntOfPod() {
-			log.Printf("[analyzeTaskLoop][%v] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods, minCntOfPods:%v tenant: %v\n", tenant.Name, tenant.GetMinCntOfPod(), tenant.Name)
+			Logger.Infof("[analyzeTaskLoop][%v] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods, minCntOfPods:%v tenant: %v", tenant.Name, tenant.GetMinCntOfPod(), tenant.Name)
 			c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.GetInitCntOfPod(), tenant.Name, c.tsContainer)
 			if c.SnsManager != nil {
 				c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
@@ -367,26 +367,26 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 			if stats != nil {
 				cpuusage := stats[0].Avg()
 
-				log.Printf("[analyzeTaskLoop][%v]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v \n", tenant.Name, tenant.Name,
+				Logger.Infof("[analyzeTaskLoop][%v]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v ", tenant.Name, tenant.Name,
 					stats[0].Avg(), stats[0].Cnt(), podCpuMap)
 
 				minCpuUsageThreshold, maxCpuUsageThreshold := tenant.GetLowerAndUpperCpuScaleThreshold()
 				bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, minCpuUsageThreshold, maxCpuUsageThreshold)
 				if bestPods != -1 && cntOfPods != bestPods {
-					log.Printf("[analyzeTaskLoop][%v] resize pods, from %v to  %v , tenant: %v\n", tenant.GetCntOfPods(), tenant.Name, bestPods, tenant.Name)
+					Logger.Infof("[analyzeTaskLoop][%v] resize pods, from %v to  %v , tenant: %v", tenant.GetCntOfPods(), tenant.Name, bestPods, tenant.Name)
 					c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, bestPods, tenant.Name, c.tsContainer)
 					if c.SnsManager != nil {
 						c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
 					}
 				} else {
-					// log.Printf("[analyzeMetrics] pods unchanged cnt:%v, bestCnt:%v, tenant:%v \n", tenant.GetCntOfPods(), bestPods, tenant.Name)
+					// Logger.Infof("[analyzeMetrics] pods unchanged cnt:%v, bestCnt:%v, tenant:%v ", tenant.GetCntOfPods(), bestPods, tenant.Name)
 				}
 			} else {
-				log.Printf("[error][analyzeTaskLoop][%v]empty metric: CPU , tenant: %v\n", tenant.Name, tenant.Name)
+				Logger.Errorf("[error][analyzeTaskLoop][%v]empty metric: CPU , tenant: %v", tenant.Name, tenant.Name)
 			}
 		}
 
-		log.Printf("[info][analyzeTaskLoop][%v]round end. tenant: %v , cost %vms\n", tenant.Name, tenant.Name, time.Now().UnixMilli()-roundBeginTime.UnixMilli())
+		Logger.Infof("[info][analyzeTaskLoop][%v]round end. tenant: %v , cost %vms", tenant.Name, tenant.Name, time.Now().UnixMilli()-roundBeginTime.UnixMilli())
 	}
 	task.endFin.Store(true)
 	task.refOfAnalyzeTaskMap.Delete(task.tenant.Name)
@@ -411,7 +411,7 @@ func (c *ClusterManager) analyzeMetrics() {
 		lastTs = roundBeginTime.Unix()
 		tenants := c.AutoScaleMeta.GetTenants()
 		var anaWg sync.WaitGroup
-		log.Printf("[info][AutoScaleAnalytics]round begin. tenants cnt: %v\n", len(tenants))
+		Logger.Infof("[info][AutoScaleAnalytics]round begin. tenants cnt: %v", len(tenants))
 		for _, tenant := range tenants {
 			anaWg.Add(1)
 			//anto scale/pause analyze of tenant
@@ -435,23 +435,23 @@ func (c *ClusterManager) analyzeMetrics() {
 					if tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoPauseIntervalSec)+30 {
 						totalTaskCnt := taskCntStats[0].Sum()
 						if totalTaskCnt < 1 { //test is zero, since it's a float, "< 1" may be better
-							log.Printf("[info][AutoPauseAnalytics]auto pause, tenant: %v\n", tenant.Name)
+							Logger.Infof("[info][AutoPauseAnalytics]auto pause, tenant: %v", tenant.Name)
 							c.Pause(tenant.Name)
 							// continue //skip auto scale TODO revert
 						}
 					} else {
-						log.Printf("[info][AutoPauseAnalytics]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   \n",
+						Logger.Infof("[info][AutoPauseAnalytics]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ",
 							tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoPauseIntervalSec)
 					}
 
 				} else {
-					log.Printf("[error][AutoPauseAnalytics]empty metric: TaskCnt , tenant: %v\n", tenant.Name)
+					Logger.Errorf("[error][AutoPauseAnalytics]empty metric: TaskCnt , tenant: %v", tenant.Name)
 				}
 
 				// Auto Scale
 				cntOfPods := tenant.GetCntOfPods()
 				if cntOfPods < tenant.GetMinCntOfPod() {
-					log.Printf("[analyzeMetrics] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods, minCntOfPods:%v tenant: %v\n", tenant.GetMinCntOfPod(), tenant.Name)
+					Logger.Infof("[analyzeMetrics] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods, minCntOfPods:%v tenant: %v", tenant.GetMinCntOfPod(), tenant.Name)
 					c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.GetInitCntOfPod(), tenant.Name, c.tsContainer)
 					if c.SnsManager != nil {
 						c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
@@ -462,28 +462,28 @@ func (c *ClusterManager) analyzeMetrics() {
 					if stats != nil {
 						cpuusage := stats[0].Avg()
 
-						log.Printf("[analyzeMetrics]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v \n", tenant.Name,
+						Logger.Infof("[analyzeMetrics]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v ", tenant.Name,
 							stats[0].Avg(), stats[0].Cnt(), podCpuMap)
 
 						minCpuUsageThreshold, maxCpuUsageThreshold := tenant.GetLowerAndUpperCpuScaleThreshold()
 						bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, minCpuUsageThreshold, maxCpuUsageThreshold)
 						if bestPods != -1 && cntOfPods != bestPods {
-							log.Printf("[analyzeMetrics] resize pods, from %v to  %v , tenant: %v\n", tenant.GetCntOfPods(), bestPods, tenant.Name)
+							Logger.Infof("[analyzeMetrics] resize pods, from %v to  %v , tenant: %v", tenant.GetCntOfPods(), bestPods, tenant.Name)
 							c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, bestPods, tenant.Name, c.tsContainer)
 							if c.SnsManager != nil {
 								c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
 							}
 						} else {
-							// log.Printf("[analyzeMetrics] pods unchanged cnt:%v, bestCnt:%v, tenant:%v \n", tenant.GetCntOfPods(), bestPods, tenant.Name)
+							// Logger.Infof("[analyzeMetrics] pods unchanged cnt:%v, bestCnt:%v, tenant:%v ", tenant.GetCntOfPods(), bestPods, tenant.Name)
 						}
 					} else {
-						log.Printf("[error][AutoScaleAnalytics]empty metric: CPU , tenant: %v\n", tenant.Name)
+						Logger.Errorf("[error][AutoScaleAnalytics]empty metric: CPU , tenant: %v", tenant.Name)
 					}
 				}
 			}(tenant)
 		}
 		anaWg.Wait()
-		log.Printf("[info][AutoScaleAnalytics]round end. tenants cnt: %v , cost %vms\n", len(tenants), time.Now().UnixMilli()-roundBeginTime.UnixMilli())
+		Logger.Infof("[info][AutoScaleAnalytics]round end. tenants cnt: %v , cost %vms", len(tenants), time.Now().UnixMilli()-roundBeginTime.UnixMilli())
 	}
 
 }
@@ -539,7 +539,7 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 		for {
 			e, more := <-ch
 			if !more {
-				log.Printf("watchPods channel closed\n")
+				Logger.Infof("watchPods channel closed")
 				break
 			}
 			pod, ok := e.Object.(*v1.Pod)
@@ -547,7 +547,7 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 				continue
 			}
 			msgid += 1
-			log.Printf("[info][watchPodsLoop] receive new pod changes, pod:%v type:%v msgid:%v\n", pod.Name, e.Type, msgid)
+			Logger.Infof("[info][watchPodsLoop] receive new pod changes, pod:%v type:%v msgid:%v", pod.Name, e.Type, msgid)
 
 			resourceVersion = pod.ResourceVersion
 			switch e.Type {
@@ -562,8 +562,8 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 			case watch.Error, watch.Bookmark: //TODO handle it
 				continue
 			}
-			log.Printf("[info][watchPodsLoop] finish handle of new pod changes, pod:%v type:%v msgid:%v\n", pod.Name, e.Type, msgid)
-			// log.Printf("act,ns,name,phase,reason,ip,noOfContainer: %v %v %v %v %v %v %v\n", e.Type,
+			Logger.Infof("[info][watchPodsLoop] finish handle of new pod changes, pod:%v type:%v msgid:%v", pod.Name, e.Type, msgid)
+			// Logger.Infof("act,ns,name,phase,reason,ip,noOfContainer: %v %v %v %v %v %v %v", e.Type,
 			// 	pod.Namespace,
 			// 	pod.Name,
 			// 	pod.Status.Phase,
@@ -638,7 +638,7 @@ func (c *ClusterManager) initK8sComponents() {
 	if err != nil {
 		panic(err.Error())
 	}
-	log.Printf("list clonneSet: %+v \n", len(cloneSetList.Items))
+	Logger.Infof("list clonneSet: %+v ", len(cloneSetList.Items))
 	found := false
 	for _, cloneSet := range cloneSetList.Items {
 		if cloneSet.Name == c.CloneSetName {
@@ -845,11 +845,11 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 // return is successful to handle
 func (c *ClusterManager) handleCloneSetApiError(err error, caller string) bool {
 	errStr := err.Error()
-	log.Printf("[error][%v]handleClonesetApiError, err: %+v\n", caller, errStr)
+	Logger.Errorf("[error][%v]handleClonesetApiError, err: %+v", caller, errStr)
 	if strings.Contains(errStr, "please apply your changes to the latest version") {
 		ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
 		if err != nil {
-			log.Printf("[error][%v]handleClonesetApiError, failed to get latest version of cloneset, err: %+v\n", caller, err.Error())
+			Logger.Errorf("[error][%v]handleClonesetApiError, failed to get latest version of cloneset, err: %+v", caller, err.Error())
 		} else {
 			c.CloneSet = ret
 			return true
@@ -872,7 +872,7 @@ func (c *ClusterManager) addNewPods(delta int32, retryCnt int) (*v1alpha1.CloneS
 	c.CloneSet.Spec.Replicas = newReplicas
 	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
 	if err != nil {
-		log.Printf("[ClusterManager.addPods] failed, error: %v\n", err.Error())
+		Logger.Infof("[ClusterManager.addPods] failed, error: %v", err.Error())
 		if c.handleCloneSetApiError(err, "ClusterManager.addNewPods") {
 			if retryCnt > 0 {
 				return c.addNewPods(delta, retryCnt-1)
@@ -895,8 +895,8 @@ func (c *ClusterManager) removePods(pods2del []string, retryCnt int) (*v1alpha1.
 	c.CloneSet.Spec.ScaleStrategy.PodsToDelete = pods2del
 	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
 	if err != nil {
-		// log.Printf("[error][ClusterManager.addNewPods] error encountered! err:%v\n", err.Error())
-		log.Printf("[ClusterManager.removePods] failed, error: %v\n", err.Error())
+		// Logger.Errorf("[error][ClusterManager.addNewPods] error encountered! err:%v", err.Error())
+		Logger.Infof("[ClusterManager.removePods] failed, error: %v", err.Error())
 		if c.handleCloneSetApiError(err, "ClusterManager.removePods") {
 			if retryCnt > 0 {
 				return c.removePods(pods2del, retryCnt-1)

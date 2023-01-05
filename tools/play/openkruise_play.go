@@ -73,7 +73,7 @@ func outsideConfig() (*restclient.Config, error) {
 // 		fmt.Println(err)
 // 	} else {
 // 		for _, item := range items {
-// 			log.Printf("%+v\n", item)
+// 			Logger.Infof("%+v", item)
 // 		}
 // 	}
 // }
@@ -275,12 +275,12 @@ func OpenkruiseTest() {
 		panic(err.Error())
 	}
 
-	log.Printf("len of cloneSetList: %v \n", len(cloneSetList.Items))
+	Logger.Infof("len of cloneSetList: %v ", len(cloneSetList.Items))
 	for _, cloneSet := range cloneSetList.Items {
 		if cloneSet.Name != "test-cloneset" {
 			continue
 		}
-		log.Printf("cloneSet: %v \n", cloneSet)
+		Logger.Infof("cloneSet: %v ", cloneSet)
 
 		newReplicas := new(int32)
 		*newReplicas = 7
@@ -294,21 +294,21 @@ func OpenkruiseTest() {
 		if err != nil {
 			panic(err.Error())
 		} else {
-			log.Printf("changed cloneSet: %v \n", ret)
+			Logger.Infof("changed cloneSet: %v ", ret)
 		}
 
 		ret, err = kruiseClient.AppsV1alpha1().CloneSets(namespace).Update(context.TODO(), &cloneSet, metav1.UpdateOptions{})
 		if err != nil {
-			log.Printf("ERROR#1!!!!: %v \n", err.Error())
+			Logger.Infof("ERROR#1!!!!: %v ", err.Error())
 		} else {
-			log.Printf("changed cloneSet: %v \n", ret)
+			Logger.Infof("changed cloneSet: %v ", ret)
 		}
-		log.Printf("ret cloneSet: %v \n", ret)
+		Logger.Infof("ret cloneSet: %v ", ret)
 		ret, err = kruiseClient.AppsV1alpha1().CloneSets(namespace).Update(context.TODO(), ret, metav1.UpdateOptions{})
 		if err != nil {
-			log.Printf("ERROR#2!!!!: %v \n", err.Error())
+			Logger.Infof("ERROR#2!!!!: %v ", err.Error())
 		} else {
-			log.Printf("changed cloneSet: %v \n", ret)
+			Logger.Infof("changed cloneSet: %v ", ret)
 		}
 
 	}
@@ -351,7 +351,7 @@ func OpenkruiseTest() {
 
 // 		for _, pod := range podMetricsList.Items {
 // 			// if pod.Name == "web-0" {
-// 			// 	log.Printf("podmetrics: %v \n", pod)
+// 			// 	Logger.Infof("podmetrics: %v ", pod)
 // 			// }
 // 			lstTs, ok := lstTsMap[pod.Name]
 // 			if !ok || pod.Timestamp.Unix() != lstTs {
@@ -366,8 +366,8 @@ func OpenkruiseTest() {
 // 				snapshot := tsContainer.GetSnapshotOfTimeSeries(pod.Name)
 // 				// mint, maxt := cur_serires.GetMinMaxTime()
 // 				hasNew = true
-// 				log.Printf("%v mint,maxt: %v ~ %v\n", pod.Name, snapshot.MinTime, snapshot.MaxTime)
-// 				log.Printf("%v statistics: cpu: %v %v mem: %v %v\n", pod.Name,
+// 				Logger.Infof("%v mint,maxt: %v ~ %v", pod.Name, snapshot.MinTime, snapshot.MaxTime)
+// 				Logger.Infof("%v statistics: cpu: %v %v mem: %v %v", pod.Name,
 // 					snapshot.AvgOfCpu,
 // 					snapshot.SampleCntOfCpu,
 // 					snapshot.AvgOfMem,
@@ -382,7 +382,7 @@ func OpenkruiseTest() {
 // 			tArr := []string{"t1", "t2"}
 // 			for _, tName := range tArr {
 // 				stats1, _ := as_meta.ComputeStatisticsOfTenant(tName, tsContainer, "play")
-// 				log.Printf("[Tenant]%v statistics: cpu: %v %v mem: %v %v\n", tName,
+// 				Logger.Infof("[Tenant]%v statistics: cpu: %v %v mem: %v %v", tName,
 // 					stats1[0].Avg(),
 // 					stats1[0].Cnt(),
 // 					stats1[1].Avg(),
@@ -391,7 +391,7 @@ func OpenkruiseTest() {
 // 			}
 // 		}
 // 		// v, ok := as_meta.PodDescMap[]
-// 		// log.Printf("Podmetrics: %v \n", podMetricsList)
+// 		// Logger.Infof("Podmetrics: %v ", podMetricsList)
 // 	}
 
 // 	// creates the clientset
@@ -407,20 +407,20 @@ func OpenkruiseTest() {
 // 		if err != nil {
 // 			panic(err.Error())
 // 		}
-// 		log.Printf("There are %d pods in the cluster\n", len(pods.Items))
+// 		Logger.Infof("There are %d pods in the cluster", len(pods.Items))
 
 // 		// Examples for error handling:
 // 		// - Use helper functions e.g. errors.IsNotFound()
 // 		// - And/or cast to StatusError and use its properties like e.g. ErrStatus.Message
 // 		_, err = clientset.CoreV1().Pods("default").Get(context.TODO(), "example-xxxxx", metav1.GetOptions{})
 // 		if errors.IsNotFound(err) {
-// 			log.Printf("Pod example-xxxxx not found in default namespace\n")
+// 			Logger.Infof("Pod example-xxxxx not found in default namespace")
 // 		} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
-// 			log.Printf("Error getting pod %v\n", statusError.ErrStatus.Message)
+// 			Logger.Infof("Error getting pod %v", statusError.ErrStatus.Message)
 // 		} else if err != nil {
 // 			panic(err.Error())
 // 		} else {
-// 			log.Printf("Found example-xxxxx pod in default namespace\n")
+// 			Logger.Infof("Found example-xxxxx pod in default namespace")
 // 		}
 
 // 		time.Sleep(10 * time.Second)
@@ -450,7 +450,7 @@ func SupClient(podIP string, tenantName string) {
 	if err != nil {
 		log.Fatalf("could not greet: %v", err)
 	}
-	log.Printf("Greeting: %s", r.GetTenantID())
+	Logger.Infof("Greeting: %s", r.GetTenantID())
 }
 
 func main() {
@@ -505,7 +505,7 @@ func main() {
 	// 	for _, metric := range metrics {
 
 	// 		labels := metric.Label
-	// 		// fmt.Printf("##LABELS_LEN %v\n", (len(labels)))
+	// 		// Logger.Infof("##LABELS_LEN %v", (len(labels)))
 	// 		extraLabelName := "tenant"
 	// 		extraLabelVal := "T1"
 	// 		metric.Label = append(metric.Label, &dto.LabelPair{

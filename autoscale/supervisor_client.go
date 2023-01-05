@@ -3,7 +3,6 @@ package autoscale
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	supervisor "github.com/tikv/pd/supervisor_proto"
@@ -33,11 +32,11 @@ func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr
 			if resp != nil && resp.HasErr {
 				err2 = resp.ErrInfo
 			}
-			log.Printf("[error]failed to AssignTenant, grpc_err: %v  api_err: %v\n", err1, err2)
+			Logger.Errorf("[error]failed to AssignTenant, grpc_err: %v  api_err: %v", err1, err2)
 		}
 	}()
 	if !IsSupClientMock {
-		log.Printf("[AssignTenant]grpc dial addr: %v \n", podIP+":"+SupervisorPort)
+		Logger.Infof("[AssignTenant]grpc dial addr: %v ", podIP+":"+SupervisorPort)
 		conn, err := grpc.Dial(podIP+":"+SupervisorPort, grpc.WithInsecure(), grpc.FailOnNonTempDialError(true), grpc.WithBlock())
 		if err != nil {
 			return nil, err
@@ -55,16 +54,16 @@ func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr
 				ctx,
 				&supervisor.AssignRequest{TenantID: tenantName, TidbStatusAddr: tidbStatusAddr, PdAddr: pdAddr})
 		if err != nil {
-			log.Printf("[error]AssignTenant fail: %v , podIP: %v \n", err, podIP)
+			Logger.Errorf("[error]AssignTenant fail: %v , podIP: %v ", err, podIP)
 			return r, err
 		} else {
 			respStr := r.TenantID
 			if r.TenantID == "" {
 				respStr = "empty"
 			}
-			log.Printf("[AssignTenant]result: %v , podIP: %v \n", respStr, podIP)
+			Logger.Infof("[AssignTenant]result: %v , podIP: %v ", respStr, podIP)
 		}
-		// log.Printf("result: %s", r.HasErr)
+		// Logger.Infof("result: %s", r.HasErr)
 		return r, err
 	} else {
 		time.Sleep(500 * time.Millisecond)
@@ -82,11 +81,11 @@ func UnassignTenant(podIP string, tenantName string) (resp *supervisor.Result, e
 			if resp != nil && resp.HasErr {
 				err2 = resp.ErrInfo
 			}
-			log.Printf("[error]failed to UnassignTenant, grpc_err: %v  api_err: %v\n", err1, err2)
+			Logger.Errorf("[error]failed to UnassignTenant, grpc_err: %v  api_err: %v", err1, err2)
 		}
 	}()
 	if !IsSupClientMock {
-		log.Printf("[UnassignTenant]grpc dial addr: %v \n", podIP+":"+SupervisorPort)
+		Logger.Infof("[UnassignTenant]grpc dial addr: %v ", podIP+":"+SupervisorPort)
 		conn, err := grpc.Dial(podIP+":"+SupervisorPort, grpc.WithInsecure(), grpc.WithBlock())
 		if err != nil {
 			return nil, err
@@ -101,15 +100,15 @@ func UnassignTenant(podIP string, tenantName string) (resp *supervisor.Result, e
 		defer cancel()
 		r, err := c.UnassignTenant(ctx, &supervisor.UnassignRequest{AssertTenantID: tenantName})
 		if err != nil {
-			log.Printf("[error]UnassignTenant fail: %v, podIP:%v \n", err, podIP)
+			Logger.Errorf("[error]UnassignTenant fail: %v, podIP:%v ", err, podIP)
 		} else {
 			respStr := r.TenantID
 			if r.TenantID == "" {
 				respStr = "empty"
 			}
-			log.Printf("[UnAssignTenant]result: %v , podIP: %v \n", respStr, podIP)
+			Logger.Infof("[UnAssignTenant]result: %v , podIP: %v ", respStr, podIP)
 		}
-		// log.Printf("result: %s", r.HasErr)
+		// Logger.Infof("result: %s", r.HasErr)
 		return r, err
 	} else {
 		time.Sleep(500 * time.Millisecond)
@@ -120,11 +119,11 @@ func UnassignTenant(podIP string, tenantName string) (resp *supervisor.Result, e
 func GetCurrentTenant(podIP string) (resp *supervisor.GetTenantResponse, err error) {
 	defer func() {
 		if err != nil {
-			log.Printf("[error]failed to GetCurrentTenant, grpc_err: %v\n", err.Error())
+			Logger.Errorf("[error]failed to GetCurrentTenant, grpc_err: %v", err.Error())
 		}
 	}()
 	if !IsSupClientMock {
-		log.Printf("[GetCurrentTenant]grpc dial addr: %v \n", podIP+":"+SupervisorPort)
+		Logger.Infof("[GetCurrentTenant]grpc dial addr: %v ", podIP+":"+SupervisorPort)
 		conn, err := grpc.Dial(podIP+":"+SupervisorPort, grpc.WithInsecure(), grpc.WithBlock())
 		if err != nil {
 			return nil, err
@@ -139,15 +138,15 @@ func GetCurrentTenant(podIP string) (resp *supervisor.GetTenantResponse, err err
 		defer cancel()
 		r, err := c.GetCurrentTenant(ctx, &emptypb.Empty{})
 		if err != nil {
-			log.Printf("[error]GetCurrentTenant fail: %v, podIp: %v\n", err, podIP)
+			Logger.Errorf("[error]GetCurrentTenant fail: %v, podIp: %v", err, podIP)
 		} else {
 			respStr := r.TenantID
 			if r.TenantID == "" {
 				respStr = "empty"
 			}
-			log.Printf("[GetTenant]result: %v , podIP: %v \n", respStr, podIP)
+			Logger.Infof("[GetTenant]result: %v , podIP: %v ", respStr, podIP)
 		}
-		// log.Printf("result: %s", r.HasErr)
+		// Logger.Infof("result: %s", r.HasErr)
 		return r, err
 	} else {
 		time.Sleep(500 * time.Millisecond)

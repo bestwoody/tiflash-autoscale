@@ -51,7 +51,7 @@ func RunGrpcServer() {
 	}
 	s := grpc.NewServer()
 	pb.RegisterAutoScaleServer(s, &server{})
-	log.Printf("[grpc] server listening at %v", listener.Addr())
+	Logger.Infof("[grpc] server listening at %v", listener.Addr())
 	if err := s.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}

@@ -54,7 +54,7 @@ func SetStateServer(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	state := req.FormValue("state")
-	log.Printf("[HTTP]SetStateServer, state: %v\n", state)
+	Logger.Infof("[HTTP]SetStateServer, state: %v", state)
 	if currentState == TenantStatePaused && state == "resume" {
 		flag = Cm4Http.Resume(tenantName)
 		if !flag {
@@ -110,7 +110,7 @@ func GetStateServer(w http.ResponseWriter, req *http.Request) {
 	ret.State = convertStateString(state)
 	retJson, _ := json.Marshal(ret)
 	retJsonStr := string(retJson)
-	log.Printf("[http]resp of getstate, '%v' \n", retJsonStr)
+	Logger.Infof("[http]resp of getstate, '%v' ", retJsonStr)
 	io.WriteString(w, retJsonStr)
 }
 
@@ -144,7 +144,7 @@ func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*Po
 		for _, metric := range v.GetMetric() {
 
 			labels := metric.Label
-			// fmt.Printf("##LABELS_LEN %v\n", (len(labels)))
+			// Logger.Infof("##LABELS_LEN %v", (len(labels)))
 
 			// extraLabelName := "tenant"
 			// extraLabelVal := "T1"
@@ -173,7 +173,7 @@ func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*Po
 			// fmt.Println(metric.Label)
 		}
 		// fmt.Println(k + ":" + v.String())
-		out.WriteString("\n")
+		out.WriteString(("\n"))
 		expfmt.MetricFamilyToText(out, v)
 		// fmt.Println(out.String())
 	}
@@ -183,14 +183,14 @@ func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*Po
 func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	node := req.FormValue("node")
-	log.Printf("[info][http]GetMetricsFromNode, node:%v\n", node)
+	Logger.Infof("[info][http]GetMetricsFromNode, node:%v", node)
 	if node == "" {
 		return
 	}
 
 	resp, err := proxyMetrics(Cm4Http.AutoScaleMeta.k8sCli.RESTClient(), node, Cm4Http.AutoScaleMeta.CopyPodDescMap()) //Cm4Http.AutoScaleMeta.PodDescMap
 	if err != nil {
-		log.Printf("[error]GetMetricsFromNode failed, node: %v err: %v\n", node, err.Error())
+		Logger.Errorf("[error]GetMetricsFromNode failed, node: %v err: %v", node, err.Error())
 		return
 	}
 	io.WriteString(w, resp)
@@ -208,18 +208,18 @@ func convertStateString(state int32) string {
 }
 
 func RunAutoscaleHttpServer() {
-	log.Printf("[http]Access-Control-Allow-Origin is enabled\n")
+	Logger.Infof("[http]Access-Control-Allow-Origin is enabled")
 	// autoscale.HardCodeEnvPdAddr = os.Getenv("PD_ADDR")
 	// autoscale.HardCodeEnvTidbStatusAddr = os.Getenv("TIDB_STATUS_ADDR")
-	// fmt.Printf("env.PD_ADDR: %v\n", autoscale.HardCodeEnvPdAddr)
-	// fmt.Printf("env.TIDB_STATUS_ADDR: %v\n", autoscale.HardCodeEnvTidbStatusAddr)
+	// Logger.Infof("env.PD_ADDR: %v", autoscale.HardCodeEnvPdAddr)
+	// Logger.Infof("env.TIDB_STATUS_ADDR: %v", autoscale.HardCodeEnvTidbStatusAddr)
 	// Cm4Http = autoscale.NewClusterManager()
 
 	http.HandleFunc("/setstate", SetStateServer)
 	http.HandleFunc("/getstate", GetStateServer)
 	http.HandleFunc("/metrics", GetMetricsFromNode)
 
-	log.Printf("[HTTP]ListenAndServe 8081")
+	Logger.Infof("[HTTP]ListenAndServe 8081")
 	err := http.ListenAndServe(":8081", nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)

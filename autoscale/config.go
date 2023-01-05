@@ -1,7 +1,6 @@
 package autoscale
 
 import (
-	"log"
 	"sync"
 )
 
@@ -26,7 +25,7 @@ func (c *ConfigOfComputeCluster) GetInitCntOfPod() int {
 	if c.InitCores >= c.MinCores && c.InitCores <= c.MaxCores && c.InitCores%DefaultCoreOfPod == 0 {
 		return c.InitCores / DefaultCoreOfPod
 	} else {
-		log.Printf("[error][ConfigOfComputeCluster] invalid initcores, TiDBCluster: %v ,CoreInfo min:%v max:%v init:%v \n", c.ConfigOfTiDBCluster.Name, c.MinCores, c.MaxCores, c.InitCores)
+		Logger.Errorf("[error][ConfigOfComputeCluster] invalid initcores, TiDBCluster: %v ,CoreInfo min:%v max:%v init:%v ", c.ConfigOfTiDBCluster.Name, c.MinCores, c.MaxCores, c.InitCores)
 		return c.MinCores / DefaultCoreOfPod
 	}
 }
@@ -35,7 +34,7 @@ func (c *ConfigOfComputeCluster) GetLowerAndUpperCpuScaleThreshold() (float64, f
 	if c.CpuScaleRules != nil {
 		return float64(c.CpuScaleRules.Threashold.Min) / 100.0, float64(c.CpuScaleRules.Threashold.Max) / 100.0
 	} else {
-		log.Printf("[warn][ConfigOfComputeCluster]CpuScaleRules is nil, TiDbCluster: %v \n", c.ConfigOfTiDBCluster.Name)
+		Logger.Warnf("[warn][ConfigOfComputeCluster]CpuScaleRules is nil, TiDbCluster: %v ", c.ConfigOfTiDBCluster.Name)
 		return DefaultLowerLimit, DefaultUpperLimit
 	}
 }

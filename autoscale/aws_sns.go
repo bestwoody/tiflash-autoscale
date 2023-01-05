@@ -3,7 +3,6 @@ package autoscale
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -85,10 +84,10 @@ func (c *AwsSnsManager) createTopic(tidbClusterID string) (string, error) {
 
 	results, err := MakeTopic(context.TODO(), c.client, input)
 	if err != nil {
-		log.Printf("[error]Create topic failed, err: %+v\n", err.Error())
+		Logger.Errorf("[error]Create topic failed, err: %+v", err.Error())
 		return "", err
 	}
-	log.Printf("[CreateTopic]topic ARN: %v \n", *results.TopicArn)
+	Logger.Infof("[CreateTopic]topic ARN: %v ", *results.TopicArn)
 	c.topicArnMap.Store(tidbClusterID, *results.TopicArn)
 	return *results.TopicArn, nil
 }
@@ -117,7 +116,7 @@ func (c *AwsSnsManager) publishTopology(tidbClusterID string, timestamp int64, t
 	}
 	jsonTopo, err := json.Marshal(topologyMessage)
 	if err != nil {
-		log.Printf("[error][AwsSnsManager]json.Marshal(topologyMessage) fail, TiDBCluster:%v err: %v\n", tidbClusterID, err.Error())
+		Logger.Errorf("[error][AwsSnsManager]json.Marshal(topologyMessage) fail, TiDBCluster:%v err: %v", tidbClusterID, err.Error())
 		return err
 	}
 	message := string(jsonTopo)
@@ -129,9 +128,9 @@ func (c *AwsSnsManager) publishTopology(tidbClusterID string, timestamp int64, t
 
 	result, err := PublishMessage(context.TODO(), c.client, input)
 	if err != nil {
-		log.Printf("[error]Publish topology failed, err: %+v\n", err.Error())
+		Logger.Errorf("[error]Publish topology failed, err: %+v", err.Error())
 		return err
 	}
-	log.Printf("[PublishTopology]message ID: %v \n", *result.MessageId)
+	Logger.Infof("[PublishTopology]message ID: %v ", *result.MessageId)
 	return nil
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"time"
 
 	"github.com/tikv/pd/autoscale"
@@ -45,7 +44,7 @@ func (c *MockTenantInfoProvider) GetTenantScaleIntervalSec(tenant string) (int, 
 
 func (c *MockTenantInfoProvider) InsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int) bool /* is_success */ {
 	return c.tsContainer.InsertWithUserCfg(key, time, values, cfgIntervalSec)
-	// log.Printf("insert %v %v %v %v\n", key, time, values, cfgIntervalSec)
+	// Logger.Infof("insert %v %v %v %v", key, time, values, cfgIntervalSec)
 	// return true
 }
 
@@ -64,7 +63,7 @@ func main2() {
 	}
 	cli.RangeQueryCpu(time.Hour, 10*time.Second, &mtip, &mtip)
 	for k, v := range mtip.podMap {
-		log.Printf("pod:%v call_cnt:%v\n", k, v)
+		Logger.Infof("pod:%v call_cnt:%v", k, v)
 		mtip.tsContainer.Dump(k, autoscale.MetricsTopicCpu)
 	}
 }

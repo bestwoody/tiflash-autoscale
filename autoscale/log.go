@@ -40,14 +40,14 @@ func InitZapLogger() {
 	Logger = RawLogger.Sugar()
 }
 
-func Loginfo(format string, v ...any) {
-	Logger.Infof(format, v...)
-}
+// func Logger.Infof(format string, v ...any) {
+// 	Logger.Infof(format, v...)
+// }
 
-func Logwarn(format string, v ...any) {
-	Logger.Warnf(format, v...)
-}
+// func Logger.Warnf(format string, v ...any) {
+// 	Logger.Warnf(format, v...)
+// }
 
-func Logerr(format string, v ...any) {
-	Logger.Errorf(format, v...)
-}
+// func Logger.Errorf(format string, v ...any) {
+// 	Logger.Errorf(format, v...)
+// }

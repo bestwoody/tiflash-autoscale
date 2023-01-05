@@ -3,8 +3,6 @@ package autoscale
 import (
 	"container/list"
 	"context"
-	"fmt"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -150,7 +148,7 @@ func (c *SimpleTimeSeries) Dump(podName string, topic MetricsTopic) {
 		}
 		// do something with e.Value
 	}
-	log.Printf("[SimpleTimeSeries]metric_topic:%v podname: %v , dump arr: %v %+v\n", topic.String(), podName, len(arr), arr)
+	Logger.Infof("[SimpleTimeSeries]metric_topic:%v podname: %v , dump arr: %v %+v", topic.String(), podName, len(arr), arr)
 }
 
 func (c *SimpleTimeSeries) ValsOfMetric() *AvgSigma {
@@ -198,7 +196,7 @@ func (cur *AvgSigma) Merge(o *AvgSigma) {
 
 func Sub(cur []AvgSigma, values []float64) {
 	if len(values) == 0 {
-		log.Printf("[error]Sub error empty values\n")
+		Logger.Errorf("[error]Sub error empty values")
 	}
 	for i, value := range values {
 		cur[i].Sub(value)
@@ -333,9 +331,9 @@ func (c *TimeSeriesContainer) ResetMetricsOfPod(podname string) {
 	v, ok := c.seriesMap[podname]
 	if ok {
 		v.Reset()
-		log.Printf("[ResetMetricsOfPod]set metrics of pod %v , cnt:%v cond1:%v  cond1&cond2: %v \n", podname, v.ValsOfMetric().Cnt(), (v.series != nil), (v.series != nil && v.series.Front() != nil))
+		Logger.Infof("[ResetMetricsOfPod]set metrics of pod %v , cnt:%v cond1:%v  cond1&cond2: %v ", podname, v.ValsOfMetric().Cnt(), (v.series != nil), (v.series != nil && v.series.Front() != nil))
 	} else {
-		log.Printf("[error]Reset pod %v fail\n", podname)
+		Logger.Errorf("[error]Reset pod %v fail", podname)
 	}
 }
 
@@ -344,7 +342,7 @@ func (cur *SimpleTimeSeries) getMinMaxTime() (int64, int64) {
 		min_time := cur.series.Front().Value.(*TimeValues).time
 		return min_time, cur.max_time
 	} else {
-		log.Printf("[error]getMinMaxTime fail, cnt:%v cond1:%v  cond1&cond2: %v \n", cur.ValsOfMetric().Cnt(), (cur.series != nil), (cur.series != nil && cur.series.Front() != nil))
+		Logger.Errorf("[error]getMinMaxTime fail, cnt:%v cond1:%v  cond1&cond2: %v ", cur.ValsOfMetric().Cnt(), (cur.series != nil), (cur.series != nil && cur.series.Front() != nil))
 		return 0, 0
 	}
 }
@@ -495,7 +493,7 @@ func NewPromClientDefault() (*PromClient, error) {
 		Address: "http://as-prometheus.tiflash-autoscale.svc.cluster.local:16292",
 	})
 	if err != nil {
-		fmt.Printf("[error][PromClient] creating client: %v\n", err)
+		Logger.Infof("[error][PromClient] creating client: %v", err)
 		return nil, err
 	}
 	return &PromClient{cli: client}, nil
@@ -506,7 +504,7 @@ func NewPromClient(addr string) (*PromClient, error) {
 		Address: addr,
 	})
 	if err != nil {
-		fmt.Printf("[error][PromClient] creating client: %v\n", err)
+		Logger.Infof("[error][PromClient] creating client: %v", err)
 		return nil, err
 	}
 	return &PromClient{cli: client}, nil
@@ -517,7 +515,7 @@ func promplay() {
 		Address: "http://as-prometheus.tiflash-autoscale.svc.cluster.local:16292",
 	})
 	if err != nil {
-		fmt.Printf("Error creating client: %v\n", err)
+		Logger.Infof("Error creating client: %v", err)
 		os.Exit(1)
 	}
 
@@ -526,13 +524,13 @@ func promplay() {
 	defer cancel()
 	result, warnings, err := v1api.Query(ctx, "up", time.Now(), v1.WithTimeout(5*time.Second))
 	if err != nil {
-		fmt.Printf("Error querying Prometheus: %v\n", err)
+		Logger.Infof("Error querying Prometheus: %v", err)
 		os.Exit(1)
 	}
 	if len(warnings) > 0 {
-		fmt.Printf("Warnings: %v\n", warnings)
+		Logger.Infof("Warnings: %v", warnings)
 	}
-	fmt.Printf("Result:\n%v\n", result)
+	Logger.Infof("Result:\n%v", result)
 }
 
 type TimeValPairVector struct {
@@ -547,7 +545,7 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 	// 	Address: "http://localhost:16292",
 	// })
 	// if err != nil {
-	// 	fmt.Printf("Error creating client: %v\n", err)
+	// 	Logger.Infof("Error creating client: %v", err)
 	// 	os.Exit(1)
 	// }
 
@@ -563,30 +561,30 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
 	result, warnings, err := v1api.QueryRange(ctx, "avg by(pod) (irate(container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]))", r, v1.WithTimeout(5*time.Second))
 	if err != nil {
-		fmt.Printf("Error querying Prometheus: %v\n", err)
+		Logger.Infof("Error querying Prometheus: %v", err)
 		return nil, err
 	}
 	if len(warnings) > 0 {
-		fmt.Printf("Warnings: %v\n", warnings)
+		Logger.Infof("Warnings: %v", warnings)
 	}
-	fmt.Printf("Result:\n%v\n", result)
+	Logger.Infof("Result:\n%v", result)
 
 	ret := make(map[string]int)
 	matrix, ok := result.(model.Matrix)
 	if ok {
 		for _, sampleStream := range matrix {
 			podName := sampleStream.Metric["pod"]
-			// fmt.Printf("pod: %v\n", podName)
+			// Logger.Infof("pod: %v", podName)
 			// lenOfVals := len(sampleStream.Values)
 			tenantName, sTimeOfAssign := tInfoProvider.GetTenantInfoOfPod(string(podName))
 			scaleIntervalSec, hasErr := tInfoProvider.GetTenantScaleIntervalSec(tenantName)
 			if hasErr {
-				log.Printf("[error][RangeQueryCpu]GetTenantScaleIntervalSec fail, there's no such tenant, tenant:%v\n", tenantName)
+				Logger.Errorf("[error][RangeQueryCpu]GetTenantScaleIntervalSec fail, there's no such tenant, tenant:%v", tenantName)
 				continue
 			}
 			if tenantName == "" || sTimeOfAssign == 0 {
 				if tenantName != "" && sTimeOfAssign == 0 {
-					log.Printf("[error][RangeQueryCpu]impossible branch, tenantName not empty and sTimeOfAssign is 0, tenant:%v\n", tenantName)
+					Logger.Errorf("[error][RangeQueryCpu]impossible branch, tenantName not empty and sTimeOfAssign is 0, tenant:%v", tenantName)
 				}
 				continue
 			}
@@ -606,7 +604,7 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 
 		}
 	} else {
-		log.Printf("[error][RangeQueryCpu]type cast fail when query cpu, real result:%v \n", result)
+		Logger.Errorf("[error][RangeQueryCpu]type cast fail when query cpu, real result:%v ", result)
 	}
 	return ret, nil
 }
@@ -617,7 +615,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	// 	Address: "http://localhost:16292",
 	// })
 	// if err != nil {
-	// 	fmt.Printf("Error creating client: %v\n", err)
+	// 	Logger.Infof("Error creating client: %v", err)
 	// 	os.Exit(1)
 	// }
 
@@ -627,20 +625,20 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
 	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
 	if err != nil {
-		log.Printf("[error][PromClient] querying Prometheus error: %v\n", err)
+		Logger.Errorf("[error][PromClient] querying Prometheus error: %v", err)
 		return nil, err
 	}
 	if len(warnings) > 0 {
-		log.Printf("[warn][PromClient] Warnings: %v\n", warnings)
+		Logger.Warnf("[warn][PromClient] Warnings: %v", warnings)
 	}
-	fmt.Printf("Result: %v\n", result.String())
+	Logger.Infof("Result: %v", result.String())
 	// matrix := result.(model.Matrix)
 	matrix, ok := result.(model.Matrix)
 	ret := make(map[string]*TimeValPair)
 	if ok {
 		for _, sampleStream := range matrix {
 			podName := sampleStream.Metric["pod"]
-			// fmt.Printf("pod: %v\n", podName)
+			// Logger.Infof("pod: %v", podName)
 			lenOfVals := len(sampleStream.Values)
 			if lenOfVals >= 2 {
 				last := sampleStream.Values[lenOfVals-1]
@@ -653,18 +651,18 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 						time:  last.Timestamp.Unix(),
 						value: rate,
 					}
-					log.Printf("[info][Prom]query cpu, key: %v time: %v val: %v\n", podName, last.Timestamp.Unix(), rate)
+					Logger.Infof("[info][Prom]query cpu, key: %v time: %v val: %v", podName, last.Timestamp.Unix(), rate)
 				}
 
 			} else {
-				log.Printf("[warn][Prom]no enough points, pod:%v\n", podName)
+				Logger.Warnf("[warn][Prom]no enough points, pod:%v", podName)
 			}
 		}
 	} else {
-		log.Printf("[error][Prom]type cast fail when query cpu, real result:%v \n", result)
+		Logger.Errorf("[error][Prom]type cast fail when query cpu, real result:%v ", result)
 	}
 
-	log.Printf("[info][Prom]query cpu, ret: %v, size:%v \n", ret, len(ret))
+	Logger.Infof("[info][Prom]query cpu, ret: %v, size:%v ", ret, len(ret))
 	return ret, nil
 }
 
@@ -675,13 +673,13 @@ func (c *PromClient) QueryComputeTask() (map[string]*TimeValPair, error) {
 	defer cancel()
 	result, warnings, err := v1api.Query(ctx, "sum by(pod) (sum_over_time(tiflash_coprocessor_handling_request_count{job=\"kube_sd_tiflash_proc\",metrics_topic=\"tiflash\", pod!=\"\"}[30s]))", time.Now(), v1.WithTimeout(5*time.Second))
 	if err != nil {
-		log.Printf("[error][PromClient] querying Prometheus error: %v\n", err)
+		Logger.Errorf("[error][PromClient] querying Prometheus error: %v", err)
 		return nil, err
 	}
 	if len(warnings) > 0 {
-		log.Printf("[warn][PromClient] Warnings: %v\n", warnings)
+		Logger.Warnf("[warn][PromClient] Warnings: %v", warnings)
 	}
-	fmt.Printf("Result: %v\n", result.String())
+	Logger.Infof("Result: %v", result.String())
 
 	vector, ok := result.(model.Vector)
 	ret := make(map[string]*TimeValPair)
@@ -689,19 +687,19 @@ func (c *PromClient) QueryComputeTask() (map[string]*TimeValPair, error) {
 		for _, sample := range vector {
 
 			podName := sample.Metric["pod"]
-			// fmt.Printf("pod: %v\n", podName)
+			// Logger.Infof("pod: %v", podName)
 			// lenOfVals := len(sampleStream.Values)
 
 			ret[string(podName)] = &TimeValPair{
 				time:  sample.Timestamp.Unix(),
 				value: float64(sample.Value),
 			}
-			log.Printf("[info][Prom]query compute_task_cnt, key: %v time: %v val: %v\n", podName, sample.Timestamp.Unix(), float64(sample.Value))
+			Logger.Infof("[info][Prom]query compute_task_cnt, key: %v time: %v val: %v", podName, sample.Timestamp.Unix(), float64(sample.Value))
 		}
 	} else {
-		log.Printf("[error][Prom]type cast fail when query compute_task_cnt, real result:%v \n", result)
+		Logger.Errorf("[error][Prom]type cast fail when query compute_task_cnt, real result:%v ", result)
 	}
 
-	log.Printf("[info][Prom]query compute_task_cnt, ret: %v, size:%v \n", ret, len(ret))
+	Logger.Infof("[info][Prom]query compute_task_cnt, ret: %v, size:%v ", ret, len(ret))
 	return ret, nil
 }
