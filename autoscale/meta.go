@@ -607,12 +607,16 @@ func (c *AutoScaleMeta) CopyPodDescMap() map[string]*PodDesc {
 }
 
 func (c *AutoScaleMeta) ScanStateOfPods() {
+	// Logger.Infof("[ScanStateOfPods] begin")
+	t1 := time.Now().UnixMilli()
 	c.mu.Lock()
 	pods := make([]*PodDesc, 0, len(c.PodDescMap))
 	for _, v := range c.PodDescMap {
 		pods = append(pods, v)
 	}
 	c.mu.Unlock()
+	t2 := time.Now().UnixMilli()
+	Logger.Infof("[ScanStateOfPods] ready to scan pods , pods_cnt: %v\n", len(pods))
 	var wg sync.WaitGroup
 	statesDeltaMap := make(map[string]string)
 	var muOfStatesDeltaMap sync.Mutex
@@ -643,6 +647,7 @@ func (c *AutoScaleMeta) ScanStateOfPods() {
 		}
 	}
 	wg.Wait()
+	Logger.Infof("[ScanStateOfPods] finish scan of pods: %v scan_cost: %vms lock_cost: %vms\n", len(pods), time.Now().UnixMilli()-t2, t2-t1)
 	c.setConfigMapStateBatch(statesDeltaMap)
 }
 

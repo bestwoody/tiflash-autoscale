@@ -96,8 +96,8 @@ type ClusterManager struct {
 
 // TODO expire of removed Pod in tsContainer,lstTsMap
 
-func (c *ClusterManager) collectMetricsFromMetricServer() {
-	c.collectMetrics(MetricsTopicCpu, true)
+func (c *ClusterManager) collectMetricsFromMetricServerLoop() {
+	c.collectMetricsLoop(MetricsTopicCpu, true)
 }
 
 func (c *ClusterManager) initRangeMetricsFromPromethues(intervalSec int) error {
@@ -128,11 +128,11 @@ func (c *ClusterManager) initRangeMetricsFromPromethues(intervalSec int) error {
 
 }
 
-func (c *ClusterManager) collectTaskCntMetricsFromPromethues() {
-	c.collectMetrics(MetricsTopicTaskCnt, false)
+func (c *ClusterManager) collectTaskCntMetricsFromPromethuesLoop() {
+	c.collectMetricsLoop(MetricsTopicTaskCnt, false)
 }
 
-func (c *ClusterManager) collectMetrics(metricsTopic MetricsTopic, fromMetricServer bool) {
+func (c *ClusterManager) collectMetricsLoop(metricsTopic MetricsTopic, fromMetricServer bool) {
 	c.wg.Add(1)
 	defer c.wg.Done()
 	as_meta := c.AutoScaleMeta
@@ -187,7 +187,7 @@ func (c *ClusterManager) collectMetrics(metricsTopic MetricsTopic, fromMetricSer
 
 		for podName, metric := range metricOfPods {
 			tenantName, _ := as_meta.GetTenantInfoOfPod(podName)
-			if tenantName == "" { //prewarm pod
+			if tenantName == "" { //prewarm pod or dead pod
 				continue
 			}
 			tenantDesc := as_meta.GetTenantDesc(tenantName)
@@ -249,8 +249,8 @@ func (c *ClusterManager) collectMetrics(metricsTopic MetricsTopic, fromMetricSer
 	}
 }
 
-func (c *ClusterManager) collectMetricsFromPromethues() {
-	c.collectMetrics(MetricsTopicCpu, false)
+func (c *ClusterManager) collectMetricsFromPromethuesLoop() {
+	c.collectMetricsLoop(MetricsTopicCpu, false)
 }
 
 func (c *ClusterManager) manageAnalyzeTasks() {
@@ -345,7 +345,7 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 					// continue //skip auto scale TODO revert
 				}
 			} else {
-				Logger.Infof("[analyzeTaskLoop][%v]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ", tenant.Name,
+				Logger.Warnf("[analyzeTaskLoop][%v]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ", tenant.Name,
 					tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoPauseIntervalSec)
 			}
 
@@ -362,9 +362,11 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 				c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
 			}
 		} else {
-			stats, podCpuMap, _, _, _ := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "analyzeMetrics", MetricsTopicCpu)
+			stats, podCpuMap, _, _, tenantMetricDesc := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "analyzeMetrics", MetricsTopicCpu)
 			/// TODO use tenantMetricDesc to check preCondition of auto scale of this tenant
-			if stats != nil {
+			autoScaleIntervalSec := tenant.GetScaleIntervalSec()
+			now := time.Now().Unix()
+			if stats != nil && tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoScaleIntervalSec)+30 {
 				cpuusage := stats[0].Avg()
 
 				Logger.Infof("[analyzeTaskLoop][%v]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v ", tenant.Name, tenant.Name,
@@ -382,7 +384,12 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 					// Logger.Infof("[analyzeMetrics] pods unchanged cnt:%v, bestCnt:%v, tenant:%v ", tenant.GetCntOfPods(), bestPods, tenant.Name)
 				}
 			} else {
-				Logger.Errorf("[error][analyzeTaskLoop][%v]empty metric: CPU , tenant: %v", tenant.Name, tenant.Name)
+				if stats == nil {
+					Logger.Errorf("[error][analyzeTaskLoop][%v]empty metric: CPU , tenant: %v", tenant.Name, tenant.Name)
+				} else {
+					Logger.Warnf("[analyzeTaskLoop][%v]condition of auto scale haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoScaleIntervalSec:%v   ", tenant.Name,
+						tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoScaleIntervalSec)
+				}
 			}
 		}
 
@@ -760,6 +767,18 @@ func (c *ClusterManager) initK8sComponents() {
 	go c.podPrepareLoop()
 }
 
+func (c *ClusterManager) scanPodsStatesLoop() {
+	c.wg.Add(1)
+	defer c.wg.Done()
+	for {
+		time.Sleep(60 * time.Second)
+		if atomic.LoadInt32(&c.shutdown) != 0 {
+			return
+		}
+		c.AutoScaleMeta.ScanStateOfPods()
+	}
+}
+
 //
 // func (c *ClusterManager) recoverStatesOfPods() {
 // 	log.Println("[ClusterManager] recoverStatesOfPods(): unimplement")
@@ -835,10 +854,11 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 
 	ret.initRangeMetricsFromPromethues(HardCodeMaxScaleIntervalSecOfCfg)
 	// ret.wg.Add(2)
-	go ret.collectMetricsFromMetricServer()
+	go ret.collectMetricsFromMetricServerLoop()
 	go ret.manageAnalyzeTasks()
 	// go ret.analyzeMetrics()
-	go ret.collectTaskCntMetricsFromPromethues()
+	go ret.collectTaskCntMetricsFromPromethuesLoop()
+	go ret.scanPodsStatesLoop()
 	return ret
 }
 

@@ -40,6 +40,39 @@ func (s *server) GetTopology(ctx context.Context, in *pb.GetTopologyRequest) (*p
 	return &pb.GetTopologyResponse{TidbClusterID: in.TidbClusterID, Timestamp: ts, TopologyList: topoList}, nil
 }
 
+func (s *server) ResumeAndGetTopology(ctx context.Context, req *pb.ResumeAndGetTopologyRequest) (*pb.ResumeAndGetTopologyResponse, error) {
+	st := time.Now()
+	ret := &pb.ResumeAndGetTopologyResponse{}
+	flag := Cm4Http.Resume(req.GetTidbClusterID())
+	if !flag {
+		ret.HasErr = true
+		ret.ErrInfo = ("resume failed")
+	}
+	flag, curState, _ := Cm4Http.AutoScaleMeta.GetTenantState(req.GetTidbClusterID())
+	if !flag {
+		ret.HasErr = true
+		ret.ErrInfo = ("no such tidb-cluster")
+		return ret, nil
+	} else {
+		ret.CurState = convertStateString(curState)
+	}
+
+	TimeOutSec := int64(60)
+	for time.Now().Unix()-st.Unix() <= TimeOutSec {
+		topoList := GetTopology(req.GetTidbClusterID())
+
+		if len(topoList) == 0 {
+			time.Sleep(100 * time.Millisecond)
+		} else {
+			ret.Topology = &pb.GetTopologyResponse{TidbClusterID: req.GetTidbClusterID(), Timestamp: time.Now().UnixNano(), TopologyList: topoList}
+			return ret, nil
+		}
+	}
+	ret.HasErr = true
+	ret.ErrInfo = "timeout"
+	return ret, nil
+}
+
 func GetTopology(tidbClusterID string) []string {
 	return Cm4Http.AutoScaleMeta.GetTopology(tidbClusterID)
 }
