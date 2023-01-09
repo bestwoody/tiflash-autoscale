@@ -399,7 +399,7 @@ func main() {
 	// configmapPlayGround()
 	// configmapPatchExample()
 	autoscale.InitZapLogger()
-	defer autoscale.RawLogger.Sync() // flushes buffer, if any
+	defer autoscale.Logger.Sync() // flushes buffer, if any
 
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyPdAddr, os.Getenv(EnvKeyPdAddr))
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyTidbStatusAddr, os.Getenv(EnvKeyTidbStatusAddr))

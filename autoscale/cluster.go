@@ -7,7 +7,6 @@ import (
 	"log"
 	"math"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -202,11 +201,16 @@ func (c *ClusterManager) collectMetricsLoop(metricsTopic MetricsTopic, fromMetri
 						0.0, //TODO remove this dummy mem metric
 					}, tenantDesc.GetScaleIntervalSec())
 			} else if metricsTopic == MetricsTopicTaskCnt {
-				tsContainer.InsertTaskCntWithUserCfg(podName, metric.time,
-					[]float64{
-						metric.value,
-						0.0, //TODO remove this dummy mem metric
-					}, tenantDesc.GetAutoPauseIntervalSec())
+				autoPauseIntervalSeconds := tenantDesc.GetAutoPauseIntervalSec()
+				if autoPauseIntervalSeconds == 0 {
+					Logger.Infof("[collectMetrics]tenant %v 's auto-pause is disabled", tenantName)
+				} else {
+					tsContainer.InsertTaskCntWithUserCfg(podName, metric.time,
+						[]float64{
+							metric.value,
+							0.0, //TODO remove this dummy mem metric
+						}, autoPauseIntervalSeconds)
+				}
 			} else {
 				panic(fmt.Errorf("unknown MetricsTopic#2:%v", metricsTopic))
 			}
@@ -320,12 +324,20 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 		tenant := task.tenant
 
 		Logger.Infof("[analyzeTaskLoop][%v]round begin. tenant: %v", tenant.Name, tenant.Name)
+		tenant.TryToReloadConf(false) /// TODO implement
+
+		cntOfPods := tenant.GetCntOfPods()
+		if tenant.IsDisabled() {
+			ok := c.Pause(tenant.Name)
+			Logger.Infof("[analyzeTaskLoop][%v]tenant disabled, try to pause return %v, cntOfPods:%v ", tenant.Name, ok, cntOfPods)
+			continue
+		}
 
 		//anto scale/pause analyze of tenant
 		if tenant.GetState() != TenantStateResumed { // tenant not available
-			return
+			Logger.Infof("[analyzeTaskLoop][%v]tenant's state is not resumed! current:%v", tenant.Name, tenant.GetState())
+			continue
 		}
-		tenant.TryToReloadConf() /// TODO implement
 
 		// PreCondition of Analytics:
 		//    1. now - max(startTimeOfAssignOfPod) >= AnalyzeInterval(scale/autopuase)
@@ -333,28 +345,32 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 		//    3. minTime of metric points of each pod should meet condition:  now - AnalyzeInterval < minTime < now - AnalyzeInterval + 30s
 
 		// Auto Pause
-		taskCntStats, _, _, _, tenantMetricDesc := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "AutoPauseAnalytics", MetricsTopicTaskCnt)
-		if taskCntStats != nil {
-			autoPauseIntervalSec := tenant.GetAutoPauseIntervalSec()
-			now := time.Now().Unix()
-			if tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoPauseIntervalSec)+30 {
-				totalTaskCnt := taskCntStats[0].Sum()
-				if totalTaskCnt < 1 { //test is zero, since it's a float, "< 1" may be better
-					Logger.Infof("[analyzeTaskLoop][%v]auto pause, tenant: %v", tenant.Name, tenant.Name)
-					c.Pause(tenant.Name)
-					// continue //skip auto scale TODO revert
-				}
-			} else {
-				Logger.Warnf("[analyzeTaskLoop][%v]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ", tenant.Name,
-					tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoPauseIntervalSec)
-			}
 
-		} else {
-			Logger.Errorf("[error][analyzeTaskLoop][%v]empty metric: TaskCnt , tenant: %v", tenant.Name, tenant.Name)
+		autoPauseIntervalSec := tenant.GetAutoPauseIntervalSec()
+		if autoPauseIntervalSec != 0 {
+			taskCntStats, _, _, _, tenantMetricDesc := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "AutoPauseAnalytics", MetricsTopicTaskCnt)
+			if taskCntStats != nil {
+				// autoPauseIntervalSec := tenant.GetAutoPauseIntervalSec()
+				now := time.Now().Unix()
+				if tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoPauseIntervalSec)+30 {
+					totalTaskCnt := taskCntStats[0].Sum()
+					if totalTaskCnt < 1 { //test is zero, since it's a float, "< 1" may be better
+						Logger.Infof("[analyzeTaskLoop][%v]auto pause, tenant: %v", tenant.Name, tenant.Name)
+						c.Pause(tenant.Name)
+						// continue //skip auto scale TODO revert
+					}
+				} else {
+					Logger.Warnf("[analyzeTaskLoop][%v]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ", tenant.Name,
+						tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoPauseIntervalSec)
+				}
+
+			} else {
+				Logger.Errorf("[error][analyzeTaskLoop][%v]empty metric: TaskCnt , tenant: %v", tenant.Name, tenant.Name)
+			}
 		}
 
 		// Auto Scale
-		cntOfPods := tenant.GetCntOfPods()
+		cntOfPods = tenant.GetCntOfPods()
 		if cntOfPods < tenant.GetMinCntOfPod() {
 			Logger.Infof("[analyzeTaskLoop][%v] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods, minCntOfPods:%v tenant: %v", tenant.Name, tenant.GetMinCntOfPod(), tenant.Name)
 			c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.GetInitCntOfPod(), tenant.Name, c.tsContainer)
@@ -399,101 +415,101 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 	task.refOfAnalyzeTaskMap.Delete(task.tenant.Name)
 }
 
-func (c *ClusterManager) analyzeMetrics() {
-	// TODO implement
-	c.wg.Add(1)
-	// c.tsContainer.GetSnapshotOfTimeSeries()
-	defer c.wg.Done()
-	lastTs := int64(0)
-	for {
-		roundBeginTime := time.Now()
-		if roundBeginTime.Unix() == lastTs {
-			time.Sleep(100 * time.Millisecond)
-			continue
-		}
-		if atomic.LoadInt32(&c.shutdown) != 0 {
-			return
-		}
+// func (c *ClusterManager) analyzeMetrics() {
+// 	// TODO implement
+// 	c.wg.Add(1)
+// 	// c.tsContainer.GetSnapshotOfTimeSeries()
+// 	defer c.wg.Done()
+// 	lastTs := int64(0)
+// 	for {
+// 		roundBeginTime := time.Now()
+// 		if roundBeginTime.Unix() == lastTs {
+// 			time.Sleep(100 * time.Millisecond)
+// 			continue
+// 		}
+// 		if atomic.LoadInt32(&c.shutdown) != 0 {
+// 			return
+// 		}
 
-		lastTs = roundBeginTime.Unix()
-		tenants := c.AutoScaleMeta.GetTenants()
-		var anaWg sync.WaitGroup
-		Logger.Infof("[AutoScaleAnalytics]round begin. tenants cnt: %v", len(tenants))
-		for _, tenant := range tenants {
-			anaWg.Add(1)
-			//anto scale/pause analyze of tenant
-			go func(tenant *TenantDesc) {
-				defer anaWg.Done()
-				if tenant.GetState() != TenantStateResumed { // tenant not available
-					return
-				}
-				tenant.TryToReloadConf() /// TODO implement
+// 		lastTs = roundBeginTime.Unix()
+// 		tenants := c.AutoScaleMeta.GetTenants()
+// 		var anaWg sync.WaitGroup
+// 		Logger.Infof("[AutoScaleAnalytics]round begin. tenants cnt: %v", len(tenants))
+// 		for _, tenant := range tenants {
+// 			anaWg.Add(1)
+// 			//anto scale/pause analyze of tenant
+// 			go func(tenant *TenantDesc) {
+// 				defer anaWg.Done()
+// 				if tenant.GetState() != TenantStateResumed { // tenant not available
+// 					return
+// 				}
+// 				tenant.TryToReloadConf(false) /// TODO implement
 
-				// PreCondition of Analytics:
-				//    1. now - max(startTimeOfAssignOfPod) >= AnalyzeInterval(scale/autopuase)
-				//    2. at least 2 metric points for each pod (since scale in minute resolution, and collect metrics in about 15s resolution)
-				//    3. minTime of metric points of each pod should meet condition:  now - AnalyzeInterval < minTime < now - AnalyzeInterval + 30s
+// 				// PreCondition of Analytics:
+// 				//    1. now - max(startTimeOfAssignOfPod) >= AnalyzeInterval(scale/autopuase)
+// 				//    2. at least 2 metric points for each pod (since scale in minute resolution, and collect metrics in about 15s resolution)
+// 				//    3. minTime of metric points of each pod should meet condition:  now - AnalyzeInterval < minTime < now - AnalyzeInterval + 30s
 
-				// Auto Pause
-				taskCntStats, _, _, _, tenantMetricDesc := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "AutoPauseAnalytics", MetricsTopicTaskCnt)
-				if taskCntStats != nil {
-					autoPauseIntervalSec := tenant.GetAutoPauseIntervalSec()
-					now := time.Now().Unix()
-					if tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoPauseIntervalSec)+30 {
-						totalTaskCnt := taskCntStats[0].Sum()
-						if totalTaskCnt < 1 { //test is zero, since it's a float, "< 1" may be better
-							Logger.Infof("[AutoPauseAnalytics]auto pause, tenant: %v", tenant.Name)
-							c.Pause(tenant.Name)
-							// continue //skip auto scale TODO revert
-						}
-					} else {
-						Logger.Infof("[AutoPauseAnalytics]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ",
-							tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoPauseIntervalSec)
-					}
+// 				// Auto Pause
+// 				taskCntStats, _, _, _, tenantMetricDesc := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "AutoPauseAnalytics", MetricsTopicTaskCnt)
+// 				if taskCntStats != nil {
+// 					autoPauseIntervalSec := tenant.GetAutoPauseIntervalSec()
+// 					now := time.Now().Unix()
+// 					if tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoPauseIntervalSec)+30 {
+// 						totalTaskCnt := taskCntStats[0].Sum()
+// 						if totalTaskCnt < 1 { //test is zero, since it's a float, "< 1" may be better
+// 							Logger.Infof("[AutoPauseAnalytics]auto pause, tenant: %v", tenant.Name)
+// 							c.Pause(tenant.Name)
+// 							// continue //skip auto scale TODO revert
+// 						}
+// 					} else {
+// 						Logger.Infof("[AutoPauseAnalytics]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ",
+// 							tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoPauseIntervalSec)
+// 					}
 
-				} else {
-					Logger.Errorf("[error][AutoPauseAnalytics]empty metric: TaskCnt , tenant: %v", tenant.Name)
-				}
+// 				} else {
+// 					Logger.Errorf("[error][AutoPauseAnalytics]empty metric: TaskCnt , tenant: %v", tenant.Name)
+// 				}
 
-				// Auto Scale
-				cntOfPods := tenant.GetCntOfPods()
-				if cntOfPods < tenant.GetMinCntOfPod() {
-					Logger.Infof("[analyzeMetrics] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods, minCntOfPods:%v tenant: %v", tenant.GetMinCntOfPod(), tenant.Name)
-					c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.GetInitCntOfPod(), tenant.Name, c.tsContainer)
-					if c.SnsManager != nil {
-						c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
-					}
-				} else {
-					stats, podCpuMap, _, _, _ := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "analyzeMetrics", MetricsTopicCpu)
-					/// TODO use tenantMetricDesc to check preCondition of auto scale of this tenant
-					if stats != nil {
-						cpuusage := stats[0].Avg()
+// 				// Auto Scale
+// 				cntOfPods := tenant.GetCntOfPods()
+// 				if cntOfPods < tenant.GetMinCntOfPod() {
+// 					Logger.Infof("[analyzeMetrics] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods, minCntOfPods:%v tenant: %v", tenant.GetMinCntOfPod(), tenant.Name)
+// 					c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.GetInitCntOfPod(), tenant.Name, c.tsContainer)
+// 					if c.SnsManager != nil {
+// 						c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
+// 					}
+// 				} else {
+// 					stats, podCpuMap, _, _, _ := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "analyzeMetrics", MetricsTopicCpu)
+// 					/// TODO use tenantMetricDesc to check preCondition of auto scale of this tenant
+// 					if stats != nil {
+// 						cpuusage := stats[0].Avg()
 
-						Logger.Infof("[analyzeMetrics]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v ", tenant.Name,
-							stats[0].Avg(), stats[0].Cnt(), podCpuMap)
+// 						Logger.Infof("[analyzeMetrics]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v ", tenant.Name,
+// 							stats[0].Avg(), stats[0].Cnt(), podCpuMap)
 
-						minCpuUsageThreshold, maxCpuUsageThreshold := tenant.GetLowerAndUpperCpuScaleThreshold()
-						bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, minCpuUsageThreshold, maxCpuUsageThreshold)
-						if bestPods != -1 && cntOfPods != bestPods {
-							Logger.Infof("[analyzeMetrics] resize pods, from %v to  %v , tenant: %v", tenant.GetCntOfPods(), bestPods, tenant.Name)
-							c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, bestPods, tenant.Name, c.tsContainer)
-							if c.SnsManager != nil {
-								c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
-							}
-						} else {
-							// Logger.Infof("[analyzeMetrics] pods unchanged cnt:%v, bestCnt:%v, tenant:%v ", tenant.GetCntOfPods(), bestPods, tenant.Name)
-						}
-					} else {
-						Logger.Errorf("[error][AutoScaleAnalytics]empty metric: CPU , tenant: %v", tenant.Name)
-					}
-				}
-			}(tenant)
-		}
-		anaWg.Wait()
-		Logger.Infof("[AutoScaleAnalytics]round end. tenants cnt: %v , cost %vms", len(tenants), time.Now().UnixMilli()-roundBeginTime.UnixMilli())
-	}
+// 						minCpuUsageThreshold, maxCpuUsageThreshold := tenant.GetLowerAndUpperCpuScaleThreshold()
+// 						bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, minCpuUsageThreshold, maxCpuUsageThreshold)
+// 						if bestPods != -1 && cntOfPods != bestPods {
+// 							Logger.Infof("[analyzeMetrics] resize pods, from %v to  %v , tenant: %v", tenant.GetCntOfPods(), bestPods, tenant.Name)
+// 							c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, bestPods, tenant.Name, c.tsContainer)
+// 							if c.SnsManager != nil {
+// 								c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
+// 							}
+// 						} else {
+// 							// Logger.Infof("[analyzeMetrics] pods unchanged cnt:%v, bestCnt:%v, tenant:%v ", tenant.GetCntOfPods(), bestPods, tenant.Name)
+// 						}
+// 					} else {
+// 						Logger.Errorf("[error][AutoScaleAnalytics]empty metric: CPU , tenant: %v", tenant.Name)
+// 					}
+// 				}
+// 			}(tenant)
+// 		}
+// 		anaWg.Wait()
+// 		Logger.Infof("[AutoScaleAnalytics]round end. tenants cnt: %v , cost %vms", len(tenants), time.Now().UnixMilli()-roundBeginTime.UnixMilli())
+// 	}
 
-}
+// }
 
 func Int32Ptr(val int32) *int32 {
 	ret := new(int32)
@@ -854,7 +870,8 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 
 	ret.initRangeMetricsFromPromethues(HardCodeMaxScaleIntervalSecOfCfg)
 	// ret.wg.Add(2)
-	go ret.collectMetricsFromMetricServerLoop()
+	// go ret.collectMetricsFromMetricServerLoop()
+	go ret.collectMetricsFromPromethuesLoop()
 	go ret.manageAnalyzeTasks()
 	// go ret.analyzeMetrics()
 	go ret.collectTaskCntMetricsFromPromethuesLoop()
@@ -866,15 +883,15 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 func (c *ClusterManager) handleCloneSetApiError(err error, caller string) bool {
 	errStr := err.Error()
 	Logger.Errorf("[error][%v]handleClonesetApiError, err: %+v", caller, errStr)
-	if strings.Contains(errStr, "please apply your changes to the latest version") {
-		ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
-		if err != nil {
-			Logger.Errorf("[error][%v]handleClonesetApiError, failed to get latest version of cloneset, err: %+v", caller, err.Error())
-		} else {
-			c.CloneSet = ret
-			return true
-		}
+	// if strings.Contains(errStr, "please apply your changes to the latest version") {
+	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
+	if err != nil {
+		Logger.Errorf("[error][%v]handleClonesetApiError again, failed to get latest version of cloneset, err: %+v", caller, err.Error())
+	} else {
+		c.CloneSet = ret
+		return true
 	}
+	// }
 	return false
 }
 
@@ -908,24 +925,30 @@ func (c *ClusterManager) addNewPods(delta int32, retryCnt int) (*v1alpha1.CloneS
 
 func (c *ClusterManager) removePods(pods2del []string, retryCnt int) (*v1alpha1.CloneSet, error) {
 	c.muOfCloneSet.Lock()
-	defer c.muOfCloneSet.Unlock()
+	// defer c.muOfCloneSet.Unlock()
+	oldRelica := *c.CloneSet.Spec.Replicas
 	newReplicas := new(int32)
 	*newReplicas = int32(*c.CloneSet.Spec.Replicas - int32(len(pods2del)))
 	c.CloneSet.Spec.Replicas = newReplicas
 	c.CloneSet.Spec.ScaleStrategy.PodsToDelete = pods2del
 	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
 	if err != nil {
+		*c.CloneSet.Spec.Replicas = oldRelica
+		c.CloneSet.Spec.ScaleStrategy.PodsToDelete = make([]string, 0)
 		// Logger.Errorf("[error][ClusterManager.addNewPods] error encountered! err:%v", err.Error())
-		Logger.Infof("[ClusterManager.removePods] failed, error: %v", err.Error())
+		Logger.Infof("[ClusterManager.removePods] failed, curReplica:%v newReplica:%v, error: %v", *c.CloneSet.Spec.Replicas, *newReplicas, err.Error())
 		if c.handleCloneSetApiError(err, "ClusterManager.removePods") {
 			if retryCnt > 0 {
+				c.muOfCloneSet.Unlock()
 				return c.removePods(pods2del, retryCnt-1)
 			}
 		}
+		c.muOfCloneSet.Unlock()
 		return c.CloneSet, fmt.Errorf(err.Error())
 	} else {
 		c.CloneSet = ret.DeepCopy()
 		ret.Spec.ScaleStrategy.PodsToDelete = nil // reset field Spec.ScaleStrategy.PodsToDelete
+		c.muOfCloneSet.Unlock()
 		return ret, nil
 	}
 }

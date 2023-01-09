@@ -11,7 +11,7 @@ type ConfigManager struct {
 
 type ConfigOfComputeCluster struct {
 	Disabled                 bool                 // triger when modified: pause cluster
-	AutoPauseIntervalSeconds int                  // triger when modified: re-range timeseries of metric active_task
+	AutoPauseIntervalSeconds int                  // triger when modified: re-range timeseries of metric active_task。 zero means disable auto pause
 	MinCores                 int                  // triger when modified: reload config before next analyze loop
 	MaxCores                 int                  // triger when modified: reload config before next analyze loop
 	InitCores                int                  // triger when modified: reload config before next analyze loop

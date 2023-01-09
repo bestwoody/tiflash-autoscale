@@ -121,15 +121,15 @@ func (c *SimpleTimeSeries) ReloadCfg(newIntervalSec int) {
 	c.cap = computeSeriesCapBasedOnIntervalSec(newIntervalSec)
 }
 
-func (c *SimpleTimeSeries) Reset() {
-	for c.series.Len() > 0 {
-		c.series.Remove(c.series.Front())
-	}
-	for i := range c.Statistics {
-		c.Statistics[i].Reset()
-	}
-	c.max_time = 0
-}
+// func (c *SimpleTimeSeries) Reset() {
+// 	for c.series.Len() > 0 {
+// 		c.series.Remove(c.series.Front())
+// 	}
+// 	for i := range c.Statistics {
+// 		c.Statistics[i].Reset()
+// 	}
+// 	c.max_time = 0
+// }
 
 type TimeValPair struct {
 	time  int64
@@ -330,10 +330,20 @@ func (c *TimeSeriesContainer) ResetMetricsOfPod(podname string) {
 	defer c.mu.Unlock()
 	v, ok := c.seriesMap[podname]
 	if ok {
-		v.Reset()
-		Logger.Infof("[ResetMetricsOfPod]set metrics of pod %v , cnt:%v cond1:%v  cond1&cond2: %v ", podname, v.ValsOfMetric().Cnt(), (v.series != nil), (v.series != nil && v.series.Front() != nil))
+		delete(c.seriesMap, podname)
+		// v.Reset()
+		Logger.Infof("[ResetMetricsOfPod]reset cpu metrics of pod %v , cnt:%v cond1:%v  cond1&cond2: %v ", podname, v.ValsOfMetric().Cnt(), (v.series != nil), (v.series != nil && v.series.Front() != nil))
 	} else {
-		Logger.Errorf("[error]Reset pod %v fail", podname)
+		Logger.Warnf("Reset pod %v fail, entry has been removed", podname)
+	}
+
+	v, ok = c.taskCntSeriesMap[podname]
+	if ok {
+		delete(c.seriesMap, podname)
+		// v.Reset()
+		Logger.Infof("[ResetMetricsOfPod]reset taskcnt metrics of pod %v , cnt:%v cond1:%v  cond1&cond2: %v ", podname, v.ValsOfMetric().Cnt(), (v.series != nil), (v.series != nil && v.series.Front() != nil))
+	} else {
+		Logger.Warnf("Reset pod %v fail, entry has been removed", podname)
 	}
 }
 
@@ -559,7 +569,7 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 		Step:  step,
 	}
 	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
-	result, warnings, err := v1api.QueryRange(ctx, "avg by(pod) (irate(container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]))", r, v1.WithTimeout(5*time.Second))
+	result, warnings, err := v1api.QueryRange(ctx, "avg by(pod) (irate(container_cpu_usage_seconds_total{job=\"kube_sd\", pod=~\"readnode.+\"}[1m]))", r, v1.WithTimeout(5*time.Second))
 	if err != nil {
 		Logger.Errorf("Error querying Prometheus: %v", err)
 		return nil, err
@@ -567,7 +577,7 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 	if len(warnings) > 0 {
 		Logger.Warnf("Warnings: %v", warnings)
 	}
-	Logger.Infof("Result:\n%v", result)
+	Logger.Infof("[RangeQueryCpu]Result:\n%v", result)
 
 	ret := make(map[string]int)
 	matrix, ok := result.(model.Matrix)
@@ -577,6 +587,9 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 			// Logger.Infof("pod: %v", podName)
 			// lenOfVals := len(sampleStream.Values)
 			tenantName, sTimeOfAssign := tInfoProvider.GetTenantInfoOfPod(string(podName))
+			if tenantName == "" {
+				continue
+			}
 			scaleIntervalSec, hasErr := tInfoProvider.GetTenantScaleIntervalSec(tenantName)
 			if hasErr {
 				Logger.Errorf("[error][RangeQueryCpu]GetTenantScaleIntervalSec fail, there's no such tenant, tenant:%v", tenantName)
@@ -623,7 +636,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
-	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
+	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", pod=~\"readnode.+\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
 	if err != nil {
 		Logger.Errorf("[error][PromClient] querying Prometheus error: %v", err)
 		return nil, err
@@ -631,7 +644,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	if len(warnings) > 0 {
 		Logger.Warnf("[warn][PromClient] Warnings: %v", warnings)
 	}
-	Logger.Infof("Result: %v", result.String())
+	// Logger.Infof("[QueryCpu]Result: %v", result.String())
 	// matrix := result.(model.Matrix)
 	matrix, ok := result.(model.Matrix)
 	ret := make(map[string]*TimeValPair)
@@ -679,7 +692,7 @@ func (c *PromClient) QueryComputeTask() (map[string]*TimeValPair, error) {
 	if len(warnings) > 0 {
 		Logger.Warnf("[warn][PromClient] Warnings: %v", warnings)
 	}
-	Logger.Infof("Result: %v", result.String())
+	// Logger.Infof("[QueryComputeTask]Result: %v", result.String())
 
 	vector, ok := result.(model.Vector)
 	ret := make(map[string]*TimeValPair)

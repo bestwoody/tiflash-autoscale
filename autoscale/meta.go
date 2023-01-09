@@ -2,7 +2,6 @@ package autoscale
 
 import (
 	"context"
-	"log"
 	"math"
 	"strings"
 	"sync"
@@ -175,27 +174,30 @@ type TenantDesc struct {
 	mu       sync.RWMutex
 	ResizeMu sync.Mutex
 
-	conf            ConfigOfComputeCluster  /// TODO copy from configManager, reload for each analyze loop
-	refOfLatestConf *ConfigOfComputeCluster /// TODO assign it // DO NOT directly read it ,since it is cocurrently being writed by other thread
+	conf            ConfigOfComputeCluster        /// TODO copy from configManager, reload for each analyze loop
+	refOfLatestConf *ConfigOfComputeClusterHolder /// TODO assign it // DO NOT directly read it ,since it is cocurrently being writed by other thread
 	// conf        TenantConf // TODO use it
 }
 
 // /TODO check and valid params such as: max/min cores
-func (c *TenantDesc) TryToReloadConf() bool {
+func (c *TenantDesc) TryToReloadConf(forceUpdate bool) bool {
 	////TODO
 
-	// c.mu.Lock()
-	// defer c.mu.Unlock()
-	// if c.refOfLatestConf.HasChanged(c.conf.LastModifiedTs) {
-	// 	c.conf = c.refOfLatestConf.DeepCopy()
-	// 	if (c.conf.MinCores%DefaultCoreOfPod != 0) || (c.conf.MaxCores%DefaultCoreOfPod != 0) {
-	// 		panic(fmt.Sprintf(("min/max cores not completedly divided by DefaultCoreOfPod, TidbCluster: %v ,isMinCoresErr: %v ,isMaxCoresErr: %v\n"),
-	// 			c.conf.ConfigOfTiDBCluster.Name, c.conf.MinCores%DefaultCoreOfPod != 0, c.conf.MaxCores%DefaultCoreOfPod != 0))
-	// 	}
-	// 	c.MinCntOfPod = c.conf.MinCores / DefaultCoreOfPod
-	// 	c.MaxCntOfPod = c.conf.MaxCores / DefaultCoreOfPod
-	// 	return true
-	// }
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.refOfLatestConf == nil {
+		return false
+	}
+	if forceUpdate || c.refOfLatestConf.HasChanged(c.conf.LastModifiedTs) {
+		c.conf = c.refOfLatestConf.DeepCopy()
+		if (c.conf.MinCores%DefaultCoreOfPod != 0) || (c.conf.MaxCores%DefaultCoreOfPod != 0) {
+			Logger.Errorf("min/max cores not completedly divided by DefaultCoreOfPod, TidbCluster: %v , minCores: %v , maxCore: %v , coresOfPod:%v \n",
+				c.conf.ConfigOfTiDBCluster.Name, c.conf.MinCores, c.conf.MaxCores, DefaultCoreOfPod)
+		}
+		// c.MinCntOfPod = c.conf.MinCores / DefaultCoreOfPod
+		// c.MaxCntOfPod = c.conf.MaxCores / DefaultCoreOfPod
+		return true
+	}
 	return false
 }
 
@@ -221,6 +223,12 @@ func (c *TenantDesc) GetMaxCntOfPod() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.conf.MaxCores / DefaultCoreOfPod
+}
+
+func (c *TenantDesc) IsDisabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conf.Disabled
 }
 
 func (c *TenantDesc) GetScaleIntervalSec() int {
@@ -399,6 +407,17 @@ func NewTenantDesc(name string, minPods int, maxPods int) *TenantDesc {
 	}
 }
 
+func NewTenantDescWithConfig(name string, confHolder *ConfigOfComputeClusterHolder) *TenantDesc {
+	ret := &TenantDesc{
+		Name:            name,
+		podMap:          make(map[string]*PodDesc),
+		podList:         make([]*PodDesc, 0, 64),
+		refOfLatestConf: confHolder,
+	}
+	ret.TryToReloadConf(true)
+	return ret
+}
+
 type PrewarmPoolOpResult struct {
 	failCnt int
 	lastTs  int64
@@ -489,7 +508,7 @@ func (p *PrewarmPool) getWarmedPods(tenantName string, cnt int) ([]*PodDesc, int
 				podsToAssign = append(podsToAssign, v)
 				cnt--
 			} else {
-				log.Println("[PrewarmPool::getWarmedPods] p.WarmedPods.RemovePod fail, return nil!")
+				Logger.Errorf("[PrewarmPool::getWarmedPods] p.WarmedPods.RemovePod fail, return nil!")
 			}
 		} else {
 			//enough pods, break early
@@ -556,7 +575,43 @@ func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
 
 func (c *AutoScaleMeta) loadTenants() {
 	c.SetupTenant("t1", 1, 4)
-	Logger.Infof("loadTenant, SetupTenant(t1, 1, 4)")
+	tenant2 := "t2"
+	tenant2minPods := 1
+	tenant2maxPods := 4
+	c.SetupTenantWithConfig(tenant2, &ConfigOfComputeClusterHolder{
+		Config: ConfigOfComputeCluster{
+			Disabled:                 false, ///TODO  disable or not defualt?
+			AutoPauseIntervalSeconds: 0,     // 5min defualt
+			MinCores:                 tenant2minPods * DefaultCoreOfPod,
+			MaxCores:                 tenant2maxPods * DefaultCoreOfPod,
+			InitCores:                tenant2minPods * DefaultCoreOfPod,
+			WindowSeconds:            60,
+			CpuScaleRules:            nil,
+			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
+				Name: tenant2,
+			},
+			LastModifiedTs: time.Now().UnixNano(),
+		},
+	})
+
+	tenant3 := "t3"
+	tenant3minPods := 1
+	tenant3maxPods := 4
+	c.SetupTenantWithConfig(tenant3, &ConfigOfComputeClusterHolder{
+		Config: ConfigOfComputeCluster{
+			Disabled:                 true, ///TODO  disable or not defualt?
+			AutoPauseIntervalSeconds: 0,    // 5min defualt
+			MinCores:                 tenant3minPods * DefaultCoreOfPod,
+			MaxCores:                 tenant3maxPods * DefaultCoreOfPod,
+			InitCores:                tenant3minPods * DefaultCoreOfPod,
+			WindowSeconds:            60,
+			CpuScaleRules:            nil,
+			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
+				Name: tenant3,
+			},
+			LastModifiedTs: time.Now().UnixNano(),
+		},
+	})
 	/// TODO load tenants from config of control panel
 }
 
@@ -1156,7 +1211,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 	return failCnt
 }
 
-func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPause bool) int {
+func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsContainer *TimeSeriesContainer, isPause bool) int {
 	Logger.Infof("[AutoScaleMeta::removePodFromTenant] %v %v ", removeCnt, tenant)
 
 	c.mu.Lock()
@@ -1230,6 +1285,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, isPaus
 				c.mu.Lock()
 				statesDeltaMap[v.Name] = ConfigMapPodStateStr(CmRnPodStateUnassigned, "")
 				c.PrewarmPool.putWarmedPod(tenant, v, false)
+				tsContainer.ResetMetricsOfPod(v.Name)
 				c.mu.Unlock()
 			}
 		}(v)
@@ -1303,11 +1359,25 @@ func (c *AutoScaleMeta) SetupTenantWithDefaultArgs4Test(tenant string) bool {
 }
 
 func (c *AutoScaleMeta) SetupTenant(tenant string, minPods int, maxPods int) bool {
+	Logger.Infof("[SetupTenant] SetupTenant(%v, %v, %v)", tenant, minPods, maxPods)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	_, ok := c.tenantMap[tenant]
 	if !ok {
 		c.tenantMap[tenant] = NewTenantDesc(tenant, minPods, maxPods)
+		return true
+	} else {
+		return false
+	}
+}
+
+func (c *AutoScaleMeta) SetupTenantWithConfig(tenant string, confHolder *ConfigOfComputeClusterHolder) bool {
+	Logger.Infof("[SetupTenant] SetupTenantWithConfig(%v, %+v)", tenant, confHolder.Config)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.tenantMap[tenant]
+	if !ok {
+		c.tenantMap[tenant] = NewTenantDescWithConfig(tenant, confHolder)
 		return true
 	} else {
 		return false
@@ -1367,7 +1437,7 @@ func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSe
 		for _, podName := range podsOfTenant {
 
 			// // FOR DEBUG
-			// tsc.Dump(podName)
+			tsc.Dump(podName, metricsTopic)
 
 			statsOfPod, descOfTimeSeries := tsc.GetStatisticsOfPod(podName, metricsTopic)
 			if statsOfPod == nil {

@@ -48,25 +48,25 @@ func (c *MockTenantInfoProvider) InsertWithUserCfg(key string, time int64, value
 	// return true
 }
 
-func main2() {
+// func main2() {
 
-	mtip := MockTenantInfoProvider{
-		podMap: make(map[string]int),
-	}
-	// // RangeQuery(5*time.Minute, 10*time.Second)
-	cli, err := autoscale.NewPromClient("http://localhost:16292")
+// 	mtip := MockTenantInfoProvider{
+// 		podMap: make(map[string]int),
+// 	}
+// 	// // RangeQuery(5*time.Minute, 10*time.Second)
+// 	cli, err := autoscale.NewPromClient("http://localhost:16292")
 
-	tsContainer := autoscale.NewTimeSeriesContainer(cli)
-	mtip.tsContainer = tsContainer
-	if err != nil {
-		panic(err)
-	}
-	cli.RangeQueryCpu(time.Hour, 10*time.Second, &mtip, &mtip)
-	for k, v := range mtip.podMap {
-		Logger.Infof("pod:%v call_cnt:%v", k, v)
-		mtip.tsContainer.Dump(k, autoscale.MetricsTopicCpu)
-	}
-}
+// 	tsContainer := autoscale.NewTimeSeriesContainer(cli)
+// 	mtip.tsContainer = tsContainer
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	cli.RangeQueryCpu(time.Hour, 10*time.Second, &mtip, &mtip)
+// 	for k, v := range mtip.podMap {
+// 		Logger.Infof("pod:%v call_cnt:%v", k, v)
+// 		mtip.tsContainer.Dump(k, autoscale.MetricsTopicCpu)
+// 	}
+// }
 
 func NewZapLogger() (*zap.Logger, error) {
 	return zap.Config{
@@ -109,10 +109,12 @@ func zapLogTest() {
 	sugar.Infof("Failed to fetch URL: %s", "hehe")
 }
 func main() {
-	zapLogTest()
-	// cli, err := autoscale.NewPromClient("http://localhost:16292")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// cli.QueryComputeTask()
+	autoscale.InitZapLogger()
+	defer autoscale.Logger.Sync() // flushes buffer, if any
+	// zapLogTest()
+	cli, err := autoscale.NewPromClient("http://localhost:16292")
+	if err != nil {
+		panic(err)
+	}
+	cli.QueryComputeTask()
 }
