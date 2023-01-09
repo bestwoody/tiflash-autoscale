@@ -779,7 +779,7 @@ func (c *AutoScaleMeta) GetTenantNames() []string {
 	return ret
 }
 
-func (c *AutoScaleMeta) Pause(tenant string) bool {
+func (c *AutoScaleMeta) Pause(tenant string, tsContainer *TimeSeriesContainer) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v, ok := c.tenantMap[tenant]
@@ -788,7 +788,7 @@ func (c *AutoScaleMeta) Pause(tenant string) bool {
 	}
 	if v.SyncStatePausing() {
 		Logger.Infof("[AutoScaleMeta] Pausing %v", tenant)
-		go c.removePodFromTenant(v.GetCntOfPods(), tenant, true)
+		go c.removePodFromTenant(v.GetCntOfPods(), tenant, tsContainer, true)
 		return true
 	} else {
 		return false
@@ -1073,7 +1073,7 @@ func (c *AutoScaleMeta) ResizePodsOfTenant(from int, target int, tenant string, 
 	if target > from {
 		c.addPodIntoTenant(target-from, tenant, tsContainer, false)
 	} else if target < from {
-		c.removePodFromTenant(from-target, tenant, false)
+		c.removePodFromTenant(from-target, tenant, tsContainer, false)
 	}
 }
 

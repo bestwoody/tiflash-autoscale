@@ -372,10 +372,12 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 		// Auto Scale
 		cntOfPods = tenant.GetCntOfPods()
 		if cntOfPods < tenant.GetMinCntOfPod() {
-			Logger.Infof("[analyzeTaskLoop][%v] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods, minCntOfPods:%v tenant: %v", tenant.Name, tenant.GetMinCntOfPod(), tenant.Name)
-			c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.GetInitCntOfPod(), tenant.Name, c.tsContainer)
-			if c.SnsManager != nil {
-				c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
+			Logger.Infof("[analyzeTaskLoop][%v] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods if curCntofPods != 0, curCntofPods:%v minCntOfPods:%v tenant: %v", tenant.Name, cntOfPods, tenant.GetMinCntOfPod(), tenant.Name)
+			if cntOfPods > 0 {
+				c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.GetInitCntOfPod(), tenant.Name, c.tsContainer)
+				if c.SnsManager != nil {
+					c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
+				}
 			}
 		} else {
 			stats, podCpuMap, _, _, tenantMetricDesc := c.AutoScaleMeta.ComputeStatisticsOfTenant(tenant.Name, c.tsContainer, "analyzeMetrics", MetricsTopicCpu)
@@ -527,7 +529,7 @@ func (c *ClusterManager) Shutdown() {
 }
 
 func (c *ClusterManager) Pause(tenant string) bool {
-	return c.AutoScaleMeta.Pause(tenant)
+	return c.AutoScaleMeta.Pause(tenant, c.tsContainer)
 }
 
 func (c *ClusterManager) Resume(tenant string) bool {
