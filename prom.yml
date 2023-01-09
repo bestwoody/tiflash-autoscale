@@ -13,8 +13,8 @@ data:
         static_configs:
         - targets: ['localhost:9090']
       - job_name: 'kube_sd'
-      #  scheme: https
-        scheme: http
+        scheme: https
+        # scheme: http
         metrics_path: /metrics/cadvisor
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
@@ -31,9 +31,9 @@ data:
         - source_labels: [__meta_kubernetes_node_name]
           target_label: __metrics_path__
           replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
-        - source_labels: [__meta_kubernetes_node_name]
-          target_label: __param_node
-          replacement: ${1}
+        # - source_labels: [__meta_kubernetes_node_name]
+        #   target_label: __param_node
+        #   replacement: ${1}
       - job_name: 'kube_sd_with_cluster_label'
       #  scheme: https
         scheme: http
