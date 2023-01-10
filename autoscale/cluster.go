@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"math"
 	"path/filepath"
 	"sync"
@@ -103,7 +102,7 @@ func (c *ClusterManager) initRangeMetricsFromPromethues(intervalSec int) error {
 	as_meta := c.AutoScaleMeta
 	tsContainer := c.tsContainer
 
-	log.Println("[initRangeMetricsFromPromethues] range query cpu")
+	Logger.Infof("[initRangeMetricsFromPromethues] range query cpu")
 	_, err := c.PromClient.RangeQueryCpu(time.Duration(intervalSec)*time.Second, 15*time.Second, c.AutoScaleMeta, c.tsContainer)
 	if err != nil {
 		Logger.Errorf("[error][initRangeMetricsFromPromethues]QueryCpu fail, err:%v", err.Error())
@@ -373,7 +372,7 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 		cntOfPods = tenant.GetCntOfPods()
 		if cntOfPods < tenant.GetMinCntOfPod() {
 			Logger.Infof("[analyzeTaskLoop][%v] StateResume and cntOfPods < tenant.MinCntOfPod, add more pods if curCntofPods != 0, curCntofPods:%v minCntOfPods:%v tenant: %v", tenant.Name, cntOfPods, tenant.GetMinCntOfPod(), tenant.Name)
-			if cntOfPods > 0 {
+			if autoPauseIntervalSec == 0 || cntOfPods > 0 { // if (auto-resume/pause disabled and its state is resumed) or it has running pod
 				c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, tenant.GetInitCntOfPod(), tenant.Name, c.tsContainer)
 				if c.SnsManager != nil {
 					c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
@@ -520,7 +519,7 @@ func Int32Ptr(val int32) *int32 {
 }
 
 func (c *ClusterManager) Shutdown() {
-	log.Println("[ClusterManager]Shutdown")
+	Logger.Infof("[ClusterManager]Shutdown")
 	atomic.StoreInt32(&c.shutdown, 1)
 	c.watchMu.Lock()
 	c.watcher.Stop()
@@ -756,12 +755,12 @@ func (c *ClusterManager) initK8sComponents() {
 				// },
 			},
 		}
-		log.Println("create clonneSet")
+		Logger.Infof("create clonneSet")
 		c.AutoScaleMeta.PrewarmPool.cntOfPending.Add(*cloneSet.Spec.Replicas)
 		retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Create(context.TODO(), &cloneSet, metav1.CreateOptions{})
 
 	} else {
-		log.Println("get clonneSet")
+		Logger.Infof("get clonneSet")
 		retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
 	}
 	if err != nil {
@@ -799,7 +798,7 @@ func (c *ClusterManager) scanPodsStatesLoop() {
 
 //
 // func (c *ClusterManager) recoverStatesOfPods() {
-// 	log.Println("[ClusterManager] recoverStatesOfPods(): unimplement")
+// 	Logger.Infof("[ClusterManager] recoverStatesOfPods(): unimplement")
 // 	// c.AutoScaleMeta.recoverStatesOfPods()
 // }
 

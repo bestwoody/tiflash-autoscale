@@ -2,6 +2,7 @@ package autoscale
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -179,10 +180,14 @@ type TenantDesc struct {
 	// conf        TenantConf // TODO use it
 }
 
-// /TODO check and valid params such as: max/min cores
-func (c *TenantDesc) TryToReloadConf(forceUpdate bool) bool {
-	////TODO
+func (c *TenantDesc) Dump() string {
+	pods := c.GetPodNames()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return fmt.Sprintf("TenantDesc{name:%v, pods:%+v, state:%v, conf:%v}", c.Name, pods, ConvertStateString(c.State), c.conf.Dump())
+}
 
+func (c *TenantDesc) TryToReloadConf(forceUpdate bool) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.refOfLatestConf == nil {
@@ -573,45 +578,48 @@ func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
 	return ret
 }
 
+func (c *AutoScaleMeta) Dump() string {
+	pod2ip := make(map[string]string)
+	tenant2PodCntMap := make(map[string]([]string))
+	c.mu.Lock()
+	for k, v := range c.tenantMap {
+		tenant2PodCntMap[k] = v.GetPodNames()
+	}
+	for k, v := range c.PodDescMap {
+		pod2ip[k] = v.IP
+	}
+	pendingCnt := c.pendingCnt
+	c.mu.Unlock()
+	return fmt.Sprintf("pendingCnt:%v, tenantcnt:%v, podcnt:%v, tenants:{%+v}, pods:{%+v} ", pendingCnt, len(tenant2PodCntMap), len(pod2ip), tenant2PodCntMap, pod2ip)
+}
+
+func (c *AutoScaleMeta) setupMockTenant(name string, minPods, maxPods int, disabled bool, autoPauseIntervalSeconds int, WindowSeconds int, cpuScaleRule *CustomScaleRule) {
+	c.SetupTenantWithConfig(name, &ConfigOfComputeClusterHolder{
+		Config: ConfigOfComputeCluster{
+			Disabled:                 disabled,                 ///TODO  disable or not defualt?
+			AutoPauseIntervalSeconds: autoPauseIntervalSeconds, // 5min defualt
+			MinCores:                 minPods * DefaultCoreOfPod,
+			MaxCores:                 maxPods * DefaultCoreOfPod,
+			InitCores:                minPods * DefaultCoreOfPod,
+			WindowSeconds:            WindowSeconds,
+			CpuScaleRules:            cpuScaleRule,
+			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
+				Name: name,
+			},
+			LastModifiedTs: time.Now().UnixNano(),
+		},
+	})
+}
+
 func (c *AutoScaleMeta) loadTenants() {
 	c.SetupTenant("t1", 1, 4)
-	tenant2 := "t2"
-	tenant2minPods := 1
-	tenant2maxPods := 4
-	c.SetupTenantWithConfig(tenant2, &ConfigOfComputeClusterHolder{
-		Config: ConfigOfComputeCluster{
-			Disabled:                 false, ///TODO  disable or not defualt?
-			AutoPauseIntervalSeconds: 0,     // 5min defualt
-			MinCores:                 tenant2minPods * DefaultCoreOfPod,
-			MaxCores:                 tenant2maxPods * DefaultCoreOfPod,
-			InitCores:                tenant2minPods * DefaultCoreOfPod,
-			WindowSeconds:            60,
-			CpuScaleRules:            nil,
-			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
-				Name: tenant2,
-			},
-			LastModifiedTs: time.Now().UnixNano(),
-		},
-	})
+	c.setupMockTenant("t2", 1, 4, false, 0, 60, nil) // t2 disabled
+	c.setupMockTenant("t3", 1, 4, true, 0, 60, nil)  // t3 enabled
 
-	tenant3 := "t3"
-	tenant3minPods := 1
-	tenant3maxPods := 4
-	c.SetupTenantWithConfig(tenant3, &ConfigOfComputeClusterHolder{
-		Config: ConfigOfComputeCluster{
-			Disabled:                 true, ///TODO  disable or not defualt?
-			AutoPauseIntervalSeconds: 0,    // 5min defualt
-			MinCores:                 tenant3minPods * DefaultCoreOfPod,
-			MaxCores:                 tenant3maxPods * DefaultCoreOfPod,
-			InitCores:                tenant3minPods * DefaultCoreOfPod,
-			WindowSeconds:            60,
-			CpuScaleRules:            nil,
-			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
-				Name: tenant3,
-			},
-			LastModifiedTs: time.Now().UnixNano(),
-		},
-	})
+	c.setupMockTenant("t4", 1, 4, false, 0, 60, NewCpuScaleRule(60, 80, "t4")) // t4 enabled scaleInterval: 60s cpuRule:60%~80%
+	c.setupMockTenant("t5", 1, 4, false, 0, 60, NewCpuScaleRule(0, 1, "t5"))
+	c.setupMockTenant("t6", 1, 4, false, 0, 60, NewCpuScaleRule(99, 100, "t6"))
+
 	/// TODO load tenants from config of control panel
 }
 
@@ -1031,7 +1039,7 @@ func (c *AutoScaleMeta) UpdatePod(pod *v1.Pod) {
 	} else {
 		if podDesc.Name == "" {
 			//TODO handle
-			Logger.Infof("[UpdatePod]exception case of Pod %v", name)
+			Logger.Errorf("[UpdatePod]exception case of Pod %v", name)
 		} else {
 			if podDesc.IP == "" {
 				if pod.Status.PodIP != "" {
@@ -1044,8 +1052,7 @@ func (c *AutoScaleMeta) UpdatePod(pod *v1.Pod) {
 
 			} else {
 				if pod.Status.PodIP == "" {
-					c.handleAccidentalPodDeletion(pod) /// NOTE: unimplemented now
-					Logger.Infof("[UpdatePod]accidental Deletion of Pod %v", name)
+					Logger.Errorf("[UpdatePod]strange case: pod used to has ip, but now it doesn't %v", name)
 				} else {
 					if podDesc.IP != pod.Status.PodIP {
 						podDesc.IP = pod.Status.PodIP
@@ -1075,6 +1082,31 @@ func (c *AutoScaleMeta) ResizePodsOfTenant(from int, target int, tenant string, 
 	} else if target < from {
 		c.removePodFromTenant(from-target, tenant, tsContainer, false)
 	}
+}
+
+func (c *AutoScaleMeta) removePodFromCluster(podDesc *PodDesc) {
+	podName := podDesc.Name
+	oldTenant, _ := podDesc.GetTenantInfo()
+	Logger.Infof("[AutoScaleMeta]removePodFromCluster pod:%v tenant:%v", podName, oldTenant)
+	// remove old pod of tenant info
+	var ok bool
+	var oldTenantDesc *TenantDesc
+	if oldTenant == "" {
+		oldTenantDesc = c.PrewarmPool.WarmedPods
+	} else {
+		oldTenantDesc, ok = c.tenantMap[oldTenant]
+		if !ok {
+			oldTenantDesc = nil
+		}
+	}
+	if oldTenantDesc != nil {
+		oldTenantDesc.RemovePod(podName)
+	}
+	// remove podinfo from cluster
+	podDesc.ClearTenantInfo()
+	// c.mu.Lock()
+	delete(c.PodDescMap, podDesc.Name)
+	// c.mu.Unlock()
 }
 
 func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodDesc, tenant string, startTimeOfAssign int64) {
@@ -1113,7 +1145,7 @@ func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodD
 			newTenantDesc.SetPod(podName, podDesc)
 		}
 	} else {
-		Logger.Infof("wild pod found! pod:%v , tenant: %v", podName, tenant)
+		Logger.Errorf("wild pod found! pod:%v , tenant: %v", podName, tenant)
 	}
 }
 
@@ -1306,21 +1338,16 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 	return cnt
 }
 
-// / TODO  since we del pod on our own, we should think of corner case that accidental pod deletion by k8s
-
-func (c *AutoScaleMeta) handleAccidentalPodDeletion(pod *v1.Pod) {
-	// TODO implements
-}
-
 func (c *AutoScaleMeta) HandleK8sDelPodEvent(pod *v1.Pod) bool {
 	name := pod.Name
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	_, ok := c.PodDescMap[name]
+	v, ok := c.PodDescMap[name]
+	Logger.Infof("[HandleK8sDelPodEvent] podName:%v, isInMap:%v", name, ok)
 	if !ok {
 		return true
 	} else {
-		c.handleAccidentalPodDeletion(pod)
+		c.removePodFromCluster(v)
 		return false
 	}
 }

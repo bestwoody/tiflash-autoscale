@@ -265,7 +265,7 @@ func OpenkruiseTest() {
 	// 		},
 	// 	},
 	// }
-	// log.Println("create clonneSet")
+	// Logger.Infof("create clonneSet")
 	// _, err = kruiseClient.AppsV1alpha1().CloneSets(namespace).Create(context.TODO(), &cloneSet, metav1.CreateOptions{})
 	// if err != nil {
 	// 	panic(err.Error())

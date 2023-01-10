@@ -1,7 +1,6 @@
 package autoscale
 
 import (
-	"log"
 	"math"
 )
 
@@ -31,17 +30,22 @@ import (
 // 	}
 // }
 
-func ComputeBestPodsInRuleOfCompute(tenantDesc *TenantDesc, cpuusage float64, cpuLowerlimit float64, cpuUpperLimit float64) (int, int /*delta*/) {
+func ComputeBestPodsInRuleOfCompute(tenantDesc *TenantDesc, cpuUsageCoresPerPod float64, cpuLowerlimit float64, cpuUpperLimit float64) (int, int /*delta*/) {
 	if tenantDesc == nil {
-		log.Println("[ComputeBestPodsInRuleOfCompute]tenantDesc == nil")
+		Logger.Infof("[ComputeBestPodsInRuleOfCompute]tenantDesc == nil")
 		return -1, 0
 	}
+	if cpuLowerlimit >= cpuUpperLimit {
+		Logger.Errorf("[ComputeBestPodsInRuleOfCompute]cpuLowerlimit >= cpuUpperLimit")
+		return -1, 0
+	}
+	tenantname := tenantDesc.Name
 	coreOfPod := DefaultCoreOfPod
 	lowerLimitOfGlobalPercentage := cpuLowerlimit
 	upperlimitOfGlobalPercentage := cpuUpperLimit
 	lowLimitOfCpuUsage := float64(coreOfPod) * lowerLimitOfGlobalPercentage
 	upLimitOfCpuUsage := float64(coreOfPod) * upperlimitOfGlobalPercentage
-	if cpuusage >= lowLimitOfCpuUsage && cpuusage <= upLimitOfCpuUsage {
+	if cpuUsageCoresPerPod >= lowLimitOfCpuUsage && cpuUsageCoresPerPod <= upLimitOfCpuUsage {
 		return -1, 0
 	} else {
 		// mu.Lock()
@@ -49,12 +53,12 @@ func ComputeBestPodsInRuleOfCompute(tenantDesc *TenantDesc, cpuusage float64, cp
 		minCntOfPods := tenantDesc.GetMinCntOfPod()
 		maxCntOfPods := tenantDesc.GetMaxCntOfPod()
 		if lowLimitOfCpuUsage+upLimitOfCpuUsage == 0 {
-			log.Println("[ComputeBestPodsInRuleOfCompute]lowLimitOfCpuUsage+upLimitOfCpuUsage == 0")
+			Logger.Infof("[ComputeBestPodsInRuleOfCompute][%v]case#1: lowLimitOfCpuUsage+upLimitOfCpuUsage == 0", tenantname)
 			return -1, 0
 		}
 		logicalTargetCpuUsageInGlobalPercentage := (lowerLimitOfGlobalPercentage + upperlimitOfGlobalPercentage) / 2
 		// cpuusage * oldCntOfPods
-		logicalTargetCpuCores := cpuusage * float64(oldCntOfPods) / logicalTargetCpuUsageInGlobalPercentage
+		logicalTargetCpuCores := cpuUsageCoresPerPod * float64(oldCntOfPods) / logicalTargetCpuUsageInGlobalPercentage
 		logicalTargetCntOfPod := logicalTargetCpuCores / float64(coreOfPod)
 		var targetCntOfPod int
 		if logicalTargetCntOfPod > float64(oldCntOfPods) && logicalTargetCntOfPod < float64(oldCntOfPods)+1 {
@@ -65,7 +69,7 @@ func ComputeBestPodsInRuleOfCompute(tenantDesc *TenantDesc, cpuusage float64, cp
 			targetCntOfPod = int(math.Round(logicalTargetCpuCores / float64(coreOfPod)))
 		}
 		targetCntOfPod = MaxInt(targetCntOfPod, 1)
-		targetCpuUsage := cpuusage * float64(oldCntOfPods) / float64(targetCntOfPod)
+		targetCpuUsageCoresPerPod := cpuUsageCoresPerPod * float64(oldCntOfPods) / float64(targetCntOfPod)
 		// mu.Unlock()
 		// 2 -> 2.1
 		// 2 -> 2.9
@@ -75,29 +79,35 @@ func ComputeBestPodsInRuleOfCompute(tenantDesc *TenantDesc, cpuusage float64, cp
 		// LOW << UP/2
 		// 0.6~0.9 , 0.75
 
-		if cpuusage > upLimitOfCpuUsage {
-			if targetCpuUsage <= lowLimitOfCpuUsage {
-				// check if targetCpuUsage can triger scale in which will cause fluctuate
-				// skip if true
-				Logger.Infof("[ComputeBestPodsInRuleOfCompute]targetCpuUsage <= lowLimitOfCpuUsage, %v vs %v", targetCpuUsage, lowLimitOfCpuUsage)
+		if cpuUsageCoresPerPod > upLimitOfCpuUsage {
+
+			if targetCntOfPod < oldCntOfPods {
+				Logger.Infof("[ComputeBestPodsInRuleOfCompute][%v]case#2: targetCntOfPod < oldCntOfPods, %v vs %v", tenantname, targetCntOfPod, oldCntOfPods)
 				return -1, 0
 			}
-			if targetCntOfPod < oldCntOfPods {
-				Logger.Infof("[ComputeBestPodsInRuleOfCompute]targetCntOfPod < oldCntOfPods, %v vs %v", targetCntOfPod, oldCntOfPods)
-				return -1, 0
+			if targetCpuUsageCoresPerPod <= lowLimitOfCpuUsage {
+				// check if targetCpuUsage can triger scale in which will cause fluctuate
+				// skip if true
+				Logger.Warnf("[ComputeBestPodsInRuleOfCompute][%v]case#3: targetCpuUsage <= lowLimitOfCpuUsage, %v vs %v", tenantname, targetCpuUsageCoresPerPod, lowLimitOfCpuUsage)
+				// return -1, 0
+				ret := MinInt(oldCntOfPods+1, maxCntOfPods)
+				return ret, ret - oldCntOfPods
 			}
 			ret := MinInt(targetCntOfPod, maxCntOfPods)
 			return ret, ret - oldCntOfPods
-		} else if cpuusage < lowLimitOfCpuUsage {
-			if targetCpuUsage >= upLimitOfCpuUsage {
-				// check if targetCpuUsage can triger scale out which will cause fluctuate
-				// skip if true
-				Logger.Infof("[ComputeBestPodsInRuleOfCompute]targetCpuUsage >= upLimitOfCpuUsage, %v vs %v", targetCpuUsage, upLimitOfCpuUsage)
+		} else if cpuUsageCoresPerPod < lowLimitOfCpuUsage {
+
+			if targetCntOfPod > oldCntOfPods {
+				Logger.Infof("[ComputeBestPodsInRuleOfCompute][%v]case#4: targetCntOfPod > oldCntOfPods, %v vs %v", tenantname, targetCntOfPod, oldCntOfPods)
 				return -1, 0
 			}
-			if targetCntOfPod > oldCntOfPods {
-				Logger.Infof("[ComputeBestPodsInRuleOfCompute]targetCntOfPod > oldCntOfPods, %v vs %v", targetCntOfPod, oldCntOfPods)
-				return -1, 0
+			if targetCpuUsageCoresPerPod >= upLimitOfCpuUsage {
+				// check if targetCpuUsage can triger scale out which will cause fluctuate
+				// skip if true
+				Logger.Warnf("[ComputeBestPodsInRuleOfCompute][%v]case#5: targetCpuUsage >= upLimitOfCpuUsage, %v vs %v", tenantname, targetCpuUsageCoresPerPod, upLimitOfCpuUsage)
+				ret := MaxInt(oldCntOfPods-1, minCntOfPods)
+				return ret, ret - oldCntOfPods
+				// return -1, 0
 			}
 			ret := MaxInt(targetCntOfPod, minCntOfPods)
 			return ret, ret - oldCntOfPods

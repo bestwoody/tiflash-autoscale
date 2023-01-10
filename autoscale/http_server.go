@@ -65,7 +65,7 @@ func SetStateServer(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
-		ret.State = convertStateString(currentState)
+		ret.State = ConvertStateString(currentState)
 		retJson, _ := json.Marshal(ret)
 		io.WriteString(w, string(retJson))
 		return
@@ -79,16 +79,22 @@ func SetStateServer(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
-		ret.State = convertStateString(currentState)
+		ret.State = ConvertStateString(currentState)
 		retJson, _ := json.Marshal(ret)
 		io.WriteString(w, string(retJson))
 		return
 	}
 	ret.HasError = 1
-	ret.State = convertStateString(currentState)
+	ret.State = ConvertStateString(currentState)
 	ret.ErrorInfo = "invalid set state"
 	retJson, _ := json.Marshal(ret)
 	io.WriteString(w, string(retJson))
+}
+
+func DumpMeta(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	Logger.Infof("[http]req of DumpMeta")
+	io.WriteString(w, Cm4Http.AutoScaleMeta.Dump())
 }
 
 func GetStateServer(w http.ResponseWriter, req *http.Request) {
@@ -107,7 +113,7 @@ func GetStateServer(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	ret.NumOfRNs = numOfRNs
-	ret.State = convertStateString(state)
+	ret.State = ConvertStateString(state)
 	retJson, _ := json.Marshal(ret)
 	retJsonStr := string(retJson)
 	Logger.Infof("[http]resp of getstate, '%v' ", retJsonStr)
@@ -196,7 +202,7 @@ func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, resp)
 }
 
-func convertStateString(state int32) string {
+func ConvertStateString(state int32) string {
 	if state == TenantStateResumed {
 		return TenantStateResumedString
 	} else if state == TenantStateResuming {
@@ -218,6 +224,7 @@ func RunAutoscaleHttpServer() {
 	http.HandleFunc("/setstate", SetStateServer)
 	http.HandleFunc("/getstate", GetStateServer)
 	http.HandleFunc("/metrics", GetMetricsFromNode)
+	http.HandleFunc("/dumpmeta", DumpMeta)
 
 	Logger.Infof("[HTTP]ListenAndServe 8081")
 	err := http.ListenAndServe(":8081", nil)

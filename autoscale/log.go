@@ -11,7 +11,9 @@ var RawLogger *zap.Logger
 var Logger *zap.SugaredLogger
 
 func InitZapLogger() {
-
+	if Logger != nil {
+		return
+	}
 	customTimeEncoder := func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
 		enc.AppendString("[" + t.Format("2006-01-02 15:04:05.000Z07:00") + "]")
 	}
@@ -54,6 +56,10 @@ func InitZapLogger() {
 		panic(err)
 	}
 	Logger = RawLogger.Sugar()
+}
+
+func init() {
+	InitZapLogger()
 }
 
 // func Logger.Infof(format string, v ...any) {
