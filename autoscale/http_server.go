@@ -202,17 +202,6 @@ func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, resp)
 }
 
-func ConvertStateString(state int32) string {
-	if state == TenantStateResumed {
-		return TenantStateResumedString
-	} else if state == TenantStateResuming {
-		return TenantStateResumingString
-	} else if state == TenantStatePaused {
-		return TenantStatePausedString
-	}
-	return TenantStatePausingString
-}
-
 func RunAutoscaleHttpServer() {
 	Logger.Infof("[http]Access-Control-Allow-Origin is enabled")
 	// autoscale.HardCodeEnvPdAddr = os.Getenv("PD_ADDR")

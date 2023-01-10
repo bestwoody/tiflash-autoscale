@@ -33,6 +33,17 @@ const (
 	FailCntCheckTimeWindow = 300 // 300s
 )
 
+func ConvertStateString(state int32) string {
+	if state == TenantStateResumed {
+		return TenantStateResumedString
+	} else if state == TenantStateResuming {
+		return TenantStateResumingString
+	} else if state == TenantStatePaused {
+		return TenantStatePausedString
+	}
+	return TenantStatePausingString
+}
+
 // type TenantAssignInfo {
 
 // }
@@ -146,12 +157,12 @@ func (c *PodDesc) HandleAssignError() {
 }
 
 // TODO implement
-func (c *PodDesc) UnassignTenantWithMockConf(tenant string) (resp *supervisor.Result, err error) {
+func (c *PodDesc) UnassignTenantWithMockConf(tenant string, forceShutdown bool) (resp *supervisor.Result, err error) {
 	// // for now, it's unnecessary to check result of switchState()
 	// if
 	c.switchState(PodStateAssigned, PodStateUnassigned)
 	// {
-	return UnassignTenant(c.IP, tenant)
+	return UnassignTenant(c.IP, tenant, forceShutdown)
 	// return err == nil && !resp.HasErr
 	// } else {
 	// return false
@@ -298,9 +309,9 @@ func (c *TenantDesc) RemovePod(k string) *PodDesc {
 	}
 }
 
-func (c *TenantDesc) PopOnePod() *PodDesc {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *TenantDesc) popOnePod() *PodDesc {
+	// c.mu.Lock()
+	// defer c.mu.Unlock()
 	if len(c.podList) > 0 {
 		curPod := c.podList[len(c.podList)-1]
 		c.podList = c.podList[:len(c.podList)-1]
@@ -313,6 +324,22 @@ func (c *TenantDesc) PopOnePod() *PodDesc {
 	} else {
 		return nil
 	}
+}
+
+func (c *TenantDesc) PopPods(cnt int, ret []*PodDesc) (int, []*PodDesc) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for cnt > 0 {
+		v := c.popOnePod()
+		if v != nil {
+			ret = append(ret, v)
+			cnt--
+		} else {
+			break
+		}
+	}
+	return cnt, ret
 }
 
 func (c *TenantDesc) GetPodNames() []string {
@@ -616,9 +643,10 @@ func (c *AutoScaleMeta) loadTenants() {
 	c.setupMockTenant("t2", 1, 4, false, 0, 60, nil) // t2 disabled
 	c.setupMockTenant("t3", 1, 4, true, 0, 60, nil)  // t3 enabled
 
-	c.setupMockTenant("t4", 1, 4, false, 0, 60, NewCpuScaleRule(60, 80, "t4")) // t4 enabled scaleInterval: 60s cpuRule:60%~80%
-	c.setupMockTenant("t5", 1, 4, false, 0, 60, NewCpuScaleRule(0, 1, "t5"))
+	c.setupMockTenant("t4", 1, 4, false, 0, 60, NewCpuScaleRule(60, 80, "t4"))  // t4 enabled scaleInterval: 60s cpuRule:60%~80%
+	c.setupMockTenant("t5", 1, 4, false, 0, 60, NewCpuScaleRule(99, 100, "t5")) //0 1
 	c.setupMockTenant("t6", 1, 4, false, 0, 60, NewCpuScaleRule(99, 100, "t6"))
+	c.setupMockTenant("t7", 1, 4, false, 0, 60, NewCpuScaleRule(20, 80, "t7"))
 
 	/// TODO load tenants from config of control panel
 }
@@ -693,16 +721,18 @@ func (c *AutoScaleMeta) ScanStateOfPods() {
 					Logger.Errorf("[error]failed to GetCurrentTenant, podname: %v ip: %v, error: %v", podDesc.Name, podDesc.IP, err.Error())
 				} else {
 					// if resp.GetTenantID() != "" {
-					c.mu.Lock()
-					c.updateLocalMetaPodOfTenant(podDesc.Name, podDesc, resp.GetTenantID(), resp.StartTime)
-					c.mu.Unlock()
-					muOfStatesDeltaMap.Lock()
-					if resp.GetTenantID() == "" {
-						statesDeltaMap[podDesc.Name] = ConfigMapPodStateStr(CmRnPodStateUnassigned, "")
-					} else {
-						statesDeltaMap[podDesc.Name] = ConfigMapPodStateStr(CmRnPodStateAssigned, resp.GetTenantID())
+					if !resp.IsUnassigning {
+						c.mu.Lock()
+						c.updateLocalMetaPodOfTenant(podDesc.Name, podDesc, resp.GetTenantID(), resp.StartTime)
+						c.mu.Unlock()
+						muOfStatesDeltaMap.Lock()
+						if resp.GetTenantID() == "" {
+							statesDeltaMap[podDesc.Name] = ConfigMapPodStateStr(CmRnPodStateUnassigned, "")
+						} else {
+							statesDeltaMap[podDesc.Name] = ConfigMapPodStateStr(CmRnPodStateAssigned, resp.GetTenantID())
+						}
+						muOfStatesDeltaMap.Unlock()
 					}
-					muOfStatesDeltaMap.Unlock()
 					// }
 				}
 
@@ -1210,9 +1240,11 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 					undoList = append(undoList, v)
 				} else { // app api error , correct its state
 					Logger.Errorf("[error][AutoScaleMeta::addPodIntoTenant] app api error , err: %v", resp.ErrInfo)
-					c.mu.Lock()
-					c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
-					c.mu.Unlock()
+					if resp.NeedUpdateStateIfErr && !resp.IsUnassigning {
+						c.mu.Lock()
+						c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
+						c.mu.Unlock()
+					}
 				}
 
 			} else {
@@ -1278,16 +1310,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 
 	cnt := removeCnt
 	podsToUnassign := make([]*PodDesc, 0, removeCnt)
-
-	for cnt > 0 {
-		v := tenantDesc.PopOnePod()
-		if v != nil {
-			podsToUnassign = append(podsToUnassign, v)
-			cnt--
-		} else {
-			break
-		}
-	}
+	cnt, podsToUnassign = tenantDesc.PopPods(cnt, podsToUnassign)
 
 	c.mu.Unlock()
 	undoList := make([]*PodDesc, 0, removeCnt)
@@ -1299,7 +1322,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 		// TODO async call grpc unassign api
 		go func(v *PodDesc) {
 			defer apiWg.Done()
-			resp, err := v.UnassignTenantWithMockConf(tenant)
+			resp, err := v.UnassignTenantWithMockConf(tenant, isPause)
 			localMu.Lock()
 			defer localMu.Unlock()
 			if err != nil || resp.HasErr {
@@ -1309,9 +1332,11 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 					undoList = append(undoList, v)
 				} else { // app api error , correct its state
 					Logger.Errorf("[error][AutoScaleMeta::removePodFromTenant] app api error, undo , err: %v", resp.ErrInfo)
-					c.mu.Lock()
-					c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
-					c.mu.Unlock()
+					if resp.NeedUpdateStateIfErr && !resp.IsUnassigning {
+						c.mu.Lock()
+						c.updateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
+						c.mu.Unlock()
+					}
 				}
 			} else {
 				c.mu.Lock()
