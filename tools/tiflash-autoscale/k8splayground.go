@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"math"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -391,7 +389,7 @@ const (
 	EnvKeyKubeRunMode    = "TIFLASH_AS_KUBE_RUN_MODE"
 	EnvKeyEnableSns      = "TIFLASH_AS_ENABLE_SNS"
 	EnvKeyRegion         = "TIFLASH_AS_REGION"
-	EnvKeyPrewarmPoolCap = "PREWARM_POOL_CAP"
+	// EnvKeyPrewarmPoolCap = "PREWARM_POOL_CAP"
 )
 
 // func Logger.Infof(format string, v ...any) {
@@ -414,7 +412,7 @@ func main() {
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyKubeRunMode, os.Getenv(EnvKeyKubeRunMode))
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyEnableSns, os.Getenv(EnvKeyEnableSns))
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyRegion, os.Getenv(EnvKeyRegion))
-	autoscale.Logger.Infof("env.%v: %v", EnvKeyPrewarmPoolCap, os.Getenv(EnvKeyPrewarmPoolCap))
+	// autoscale.Logger.Infof("env.%v: %v", EnvKeyPrewarmPoolCap, os.Getenv(EnvKeyPrewarmPoolCap))
 
 	autoscale.HardCodeEnvPdAddr = os.Getenv(EnvKeyPdAddr)
 	autoscale.HardCodeEnvTidbStatusAddr = os.Getenv(EnvKeyTidbStatusAddr)
@@ -432,16 +430,30 @@ func main() {
 	if strings.ToLower(envEnableSns) == "false" {
 		isSnsEnabled = false
 	}
-	envPrewarmPoolCap := os.Getenv(EnvKeyPrewarmPoolCap)
-	if envPrewarmPoolCap != "" {
-		intPrewarmPoolCap, err := strconv.Atoi(envPrewarmPoolCap)
 
-		if err != nil {
-			panic(fmt.Errorf("EnvKeyPrewarmPoolCap parse error: %v", err))
-		} else {
-			autoscale.PrewarmPoolCap = intPrewarmPoolCap
-		}
-	}
+	flag.IntVar(&autoscale.PrewarmPoolCap, "warm-pool-cap", autoscale.PrewarmPoolCap, "PrewarmPoolCap")
+	flag.IntVar(&autoscale.DefaultMinCntOfPod, "default-min-pods", autoscale.DefaultMinCntOfPod, "DefaultMinCntOfPod")
+	flag.IntVar(&autoscale.DefaultMaxCntOfPod, "default-max-pods", autoscale.DefaultMaxCntOfPod, "DefaultMaxCntOfPod")
+	flag.IntVar(&autoscale.DefaultCoreOfPod, "default-cores-of-pods", autoscale.DefaultCoreOfPod, "DefaultCoreOfPod")
+	flag.Float64Var(&autoscale.DefaultLowerLimit, "default-lowerlimit", autoscale.DefaultLowerLimit, "DefaultLowerLimit")
+	flag.Float64Var(&autoscale.DefaultUpperLimit, "default-upperlimit", autoscale.DefaultUpperLimit, "DefaultUpperLimit")
+	flag.IntVar(&autoscale.MetricResolutionSeconds, "metric-resolution-sec", autoscale.MetricResolutionSeconds, "MetricResolutionSeconds")
+	flag.IntVar(&autoscale.DefaultAutoPauseIntervalSeconds, "default-autopause-intervalsec", autoscale.DefaultAutoPauseIntervalSeconds, "DefaultAutoPauseIntervalSeconds")
+	flag.IntVar(&autoscale.DefaultScaleIntervalSeconds, "default-autoscale-intervalsec", autoscale.DefaultScaleIntervalSeconds, "DefaultScaleIntervalSeconds")
+	flag.IntVar(&autoscale.HardCodeMaxScaleIntervalSecOfCfg, "maxscale-intervalsec-of-cfg", autoscale.HardCodeMaxScaleIntervalSecOfCfg, "HardCodeMaxScaleIntervalSecOfCfg")
+
+	flag.Parse()
+
+	autoscale.Logger.Infof("[config]PrewarmPoolCap: %v", autoscale.PrewarmPoolCap)
+	autoscale.Logger.Infof("[config]DefaultMinCntOfPod: %v", autoscale.DefaultMinCntOfPod)
+	autoscale.Logger.Infof("[config]DefaultMaxCntOfPod: %v", autoscale.DefaultMaxCntOfPod)
+	autoscale.Logger.Infof("[config]DefaultCoreOfPod: %v", autoscale.DefaultCoreOfPod)
+	autoscale.Logger.Infof("[config]DefaultLowerLimit: %v", autoscale.DefaultLowerLimit)
+	autoscale.Logger.Infof("[config]DefaultUpperLimit: %v", autoscale.DefaultUpperLimit)
+	autoscale.Logger.Infof("[config]MetricResolutionSeconds: %v", autoscale.MetricResolutionSeconds)
+	autoscale.Logger.Infof("[config]DefaultAutoPauseIntervalSeconds: %v", autoscale.DefaultAutoPauseIntervalSeconds)
+	autoscale.Logger.Infof("[config]DefaultScaleIntervalSeconds: %v", autoscale.DefaultScaleIntervalSeconds)
+	autoscale.Logger.Infof("[config]HardCodeMaxScaleIntervalSecOfCfg: %v", autoscale.HardCodeMaxScaleIntervalSecOfCfg)
 
 	cm := autoscale.NewClusterManager(autoscale.EnvRegion, isSnsEnabled)
 	autoscale.Cm4Http = cm

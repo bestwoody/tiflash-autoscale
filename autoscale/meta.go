@@ -442,7 +442,7 @@ func (c *TenantDesc) GetState() int32 {
 	return atomic.LoadInt32(&c.State)
 }
 
-const (
+var (
 	DefaultMinCntOfPod        = 1
 	DefaultMaxCntOfPod        = 4
 	DefaultCoreOfPod          = 8
@@ -453,8 +453,8 @@ const (
 	// DefaultCapOfSeries        = 6  ///default scale interval: 1min. 6 * MetricResolutionSeconds(10s) = 60s (1min)
 	MetricResolutionSeconds = 10 // metric step: 10s
 
-	DefaultAutoPauseIntervalSeconds  = 300
-	DefaultScaleIntervalSeconds      = 180
+	DefaultAutoPauseIntervalSeconds  = 60
+	DefaultScaleIntervalSeconds      = 60
 	HardCodeMaxScaleIntervalSecOfCfg = 3600
 )
 
