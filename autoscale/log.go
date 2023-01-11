@@ -10,6 +10,8 @@ import (
 var RawLogger *zap.Logger
 var Logger *zap.SugaredLogger
 
+const SettingLogLevel = zap.DebugLevel
+
 func InitZapLogger() {
 	if Logger != nil {
 		return
@@ -27,7 +29,7 @@ func InitZapLogger() {
 	}
 
 	RawLogger, err := zap.Config{
-		Level:       zap.NewAtomicLevelAt(zap.InfoLevel),
+		Level:       zap.NewAtomicLevelAt(SettingLogLevel),
 		Development: false,
 		Sampling: &zap.SamplingConfig{
 			Initial:    100,

@@ -24,7 +24,14 @@ import (
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-var OptionRunModeIsLocal = false
+const (
+	RunModeServeless = iota
+	RunModeLocal
+	RunModeDedicated
+	RunModeCustom
+)
+
+var OptionRunMode = RunModeServeless
 var EnvRegion string
 
 func outsideConfig() (*restclient.Config, error) {
@@ -532,7 +539,10 @@ func (c *ClusterManager) Pause(tenant string) bool {
 }
 
 func (c *ClusterManager) Resume(tenant string) bool {
-	return c.AutoScaleMeta.Resume(tenant, c.tsContainer)
+	resultChan := make(chan int)
+	ret := c.AutoScaleMeta.AsyncResume(tenant, c.tsContainer, resultChan)
+	addPodsResult := <-resultChan
+	return ret && addPodsResult != -1
 }
 
 func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
@@ -633,7 +643,7 @@ func (c *ClusterManager) loadPods() string {
 }
 
 func (c *ClusterManager) getComputePodAntiAffinity() *v1.PodAntiAffinity {
-	if OptionRunModeIsLocal {
+	if OptionRunMode == RunModeLocal {
 		return nil
 	} else {
 		return &v1.PodAntiAffinity{
@@ -772,8 +782,7 @@ func (c *ClusterManager) initK8sComponents() {
 	// load k8s pods of cloneset
 	resVer := c.loadPods()
 
-	// TODO periodically call ScanStateOfPods()
-	c.AutoScaleMeta.ScanStateOfPods()
+	c.AutoScaleMeta.ScanStateOfPodsAtStartup()
 
 	// watch changes of pods
 	c.wg.Add(2)
@@ -784,17 +793,17 @@ func (c *ClusterManager) initK8sComponents() {
 	go c.podPrepareLoop()
 }
 
-func (c *ClusterManager) scanPodsStatesLoop() {
-	c.wg.Add(1)
-	defer c.wg.Done()
-	for {
-		time.Sleep(60 * time.Second)
-		if atomic.LoadInt32(&c.shutdown) != 0 {
-			return
-		}
-		c.AutoScaleMeta.ScanStateOfPods()
-	}
-}
+// func (c *ClusterManager) scanPodsStatesLoop() {
+// 	c.wg.Add(1)
+// 	defer c.wg.Done()
+// 	for {
+// 		time.Sleep(60 * time.Second)
+// 		if atomic.LoadInt32(&c.shutdown) != 0 {
+// 			return
+// 		}
+// 		c.AutoScaleMeta.ScanStateOfPodsAtStartup()
+// 	}
+// }
 
 //
 // func (c *ClusterManager) recoverStatesOfPods() {
@@ -876,7 +885,10 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 	go ret.manageAnalyzeTasks()
 	// go ret.analyzeMetrics()
 	go ret.collectTaskCntMetricsFromPromethuesLoop()
-	go ret.scanPodsStatesLoop()
+
+	//unsafe
+	// go ret.scanPodsStatesLoop()
+
 	return ret
 }
 
@@ -898,7 +910,7 @@ func (c *ClusterManager) handleCloneSetApiError(err error, caller string) bool {
 
 func (c *ClusterManager) addNewPods(delta int32, retryCnt int) (*v1alpha1.CloneSet, error) {
 	c.muOfCloneSet.Lock()
-	defer c.muOfCloneSet.Unlock()
+	// defer c.muOfCloneSet.Unlock()
 	// if delta <= 0 {
 	// 	return cloneSet, fmt.Errorf("delta <= 0")
 	// }
@@ -913,12 +925,15 @@ func (c *ClusterManager) addNewPods(delta int32, retryCnt int) (*v1alpha1.CloneS
 		Logger.Infof("[ClusterManager.addPods] failed, error: %v", err.Error())
 		if c.handleCloneSetApiError(err, "ClusterManager.addNewPods") {
 			if retryCnt > 0 {
+				c.muOfCloneSet.Unlock()
 				return c.addNewPods(delta, retryCnt-1)
 			}
 		}
+		c.muOfCloneSet.Unlock()
 		return c.CloneSet, fmt.Errorf(err.Error())
 	} else {
 		c.CloneSet = ret.DeepCopy()
+		c.muOfCloneSet.Unlock()
 		return ret, nil
 	}
 

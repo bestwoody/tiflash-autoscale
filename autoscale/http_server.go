@@ -20,6 +20,13 @@ type SetStateResult struct {
 	State     string `json:"state"`
 }
 
+type ResumeAndGetTopologyResult struct {
+	HasError  int      `json:"hasError"`
+	ErrorInfo string   `json:"errorInfo"`
+	State     string   `json:"state"`
+	Topology  []string `json:"topology"`
+}
+
 type GetStateResult struct {
 	HasError  int    `json:"hasError"`
 	ErrorInfo string `json:"errorInfo"`
@@ -38,6 +45,7 @@ var (
 	Cm4Http *ClusterManager
 )
 
+// depricated
 func SetStateServer(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	tenantName := req.FormValue("tenantName")
@@ -89,6 +97,59 @@ func SetStateServer(w http.ResponseWriter, req *http.Request) {
 	ret.ErrorInfo = "invalid set state"
 	retJson, _ := json.Marshal(ret)
 	io.WriteString(w, string(retJson))
+}
+
+func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	tenantName := req.FormValue("tidbclusterid")
+	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
+	if tenantName == "" {
+		ret.HasError = 1
+		ret.State = "unknown"
+		ret.ErrorInfo = "invalid set state"
+		retJson, _ := json.Marshal(ret)
+		io.WriteString(w, string(retJson))
+		return
+	}
+	flag, currentState, _ := Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
+	if !flag {
+		//register new tenant for serveless tier
+		if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless {
+			Cm4Http.AutoScaleMeta.SetupTenant(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod)
+		}
+		flag, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
+		if !flag {
+			ret.HasError = 1
+			ret.ErrorInfo = "get state failed, tenant does not exist"
+			retJson, _ := json.Marshal(ret)
+			io.WriteString(w, string(retJson))
+			return
+		}
+	}
+	// state := req.FormValue("state")
+	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v", tenantName)
+	if currentState == TenantStatePaused {
+		flag = Cm4Http.Resume(tenantName)
+		ret.Topology = Cm4Http.AutoScaleMeta.GetTopology(tenantName)
+		if !flag {
+			ret.HasError = 1
+			ret.ErrorInfo = "resume failed"
+			retJson, _ := json.Marshal(ret)
+			io.WriteString(w, string(retJson))
+		} else {
+			_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
+			ret.State = ConvertStateString(currentState)
+			retJson, _ := json.Marshal(ret)
+			io.WriteString(w, string(retJson))
+		}
+	} else {
+		ret.Topology = Cm4Http.AutoScaleMeta.GetTopology(tenantName)
+		ret.HasError = 1
+		ret.State = ConvertStateString(currentState)
+		ret.ErrorInfo = "resume fail, ComputePool state is not paused"
+		retJson, _ := json.Marshal(ret)
+		io.WriteString(w, string(retJson))
+	}
 }
 
 func DumpMeta(w http.ResponseWriter, req *http.Request) {
@@ -213,6 +274,7 @@ func RunAutoscaleHttpServer() {
 	http.HandleFunc("/setstate", SetStateServer)
 	http.HandleFunc("/getstate", GetStateServer)
 	http.HandleFunc("/metrics", GetMetricsFromNode)
+	http.HandleFunc("/resume-and-get-topology", HttpHandleResumeAndGetTopology)
 	http.HandleFunc("/dumpmeta", DumpMeta)
 
 	Logger.Infof("[HTTP]ListenAndServe 8081")

@@ -11,8 +11,11 @@ import (
 )
 
 const (
-	SupervisorPort  string = "7000"
-	IsSupClientMock bool   = false
+	SupervisorPort         string = "7000"
+	IsSupClientMock        bool   = false
+	GrpcCommonTimeOutSec          = 10
+	GrpcAssignTimeOutSec          = 120
+	GrpcUnassignTimeOutSec        = 120
 )
 
 var HardCodeEnvTidbStatusAddr string
@@ -37,7 +40,7 @@ func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr
 	}()
 	if !IsSupClientMock {
 		Logger.Infof("[SupClient][AssignTenant]grpc dial addr: %v ", podIP+":"+SupervisorPort)
-		connctx, conncancel := context.WithTimeout(context.Background(), 10*time.Second)
+		connctx, conncancel := context.WithTimeout(context.Background(), GrpcCommonTimeOutSec*time.Second)
 		defer conncancel()
 		conn, err := grpc.DialContext(connctx, podIP+":"+SupervisorPort, grpc.WithInsecure(), grpc.FailOnNonTempDialError(true), grpc.WithBlock())
 		if err != nil {
@@ -49,7 +52,7 @@ func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr
 		c := supervisor.NewAssignClient(conn)
 
 		// Contact the server and print out its response.
-		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), GrpcAssignTimeOutSec*time.Second)
 		defer cancel()
 		r, err :=
 			c.AssignTenant(
@@ -88,7 +91,7 @@ func UnassignTenant(podIP string, tenantName string, forceShutdown bool) (resp *
 	}()
 	if !IsSupClientMock {
 		Logger.Infof("[SupClient][UnassignTenant]grpc dial addr: %v ", podIP+":"+SupervisorPort)
-		connctx, conncancel := context.WithTimeout(context.Background(), 10*time.Second)
+		connctx, conncancel := context.WithTimeout(context.Background(), GrpcCommonTimeOutSec*time.Second)
 		defer conncancel()
 		conn, err := grpc.DialContext(connctx, podIP+":"+SupervisorPort, grpc.WithInsecure(), grpc.WithBlock())
 		if err != nil {
@@ -100,7 +103,7 @@ func UnassignTenant(podIP string, tenantName string, forceShutdown bool) (resp *
 		c := supervisor.NewAssignClient(conn)
 
 		// Contact the server and print out its response.
-		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), GrpcUnassignTimeOutSec*time.Second)
 		defer cancel()
 		r, err := c.UnassignTenant(ctx, &supervisor.UnassignRequest{AssertTenantID: tenantName, ForceShutdown: forceShutdown})
 		if err != nil {
@@ -128,7 +131,7 @@ func GetCurrentTenant(podIP string) (resp *supervisor.GetTenantResponse, err err
 	}()
 	if !IsSupClientMock {
 		Logger.Infof("[GetCurrentTenant]grpc dial addr: %v ", podIP+":"+SupervisorPort)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), GrpcCommonTimeOutSec*time.Second)
 		defer cancel()
 		conn, err := grpc.DialContext(ctx, podIP+":"+SupervisorPort, grpc.WithInsecure(), grpc.WithBlock())
 		if err != nil {
@@ -140,7 +143,7 @@ func GetCurrentTenant(podIP string) (resp *supervisor.GetTenantResponse, err err
 		c := supervisor.NewAssignClient(conn)
 
 		// Contact the server and print out its response.
-		ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx2, cancel2 := context.WithTimeout(context.Background(), GrpcCommonTimeOutSec*time.Second)
 		defer cancel2()
 		r, err := c.GetCurrentTenant(ctx2, &emptypb.Empty{})
 		if err != nil {
