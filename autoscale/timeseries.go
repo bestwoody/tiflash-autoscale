@@ -65,16 +65,16 @@ type DescOfTenantTimeSeries struct {
 	MinOfPodTimeseriesSize int
 	SumOfPodTimeseriesSize int
 	PodCnt                 int
-	MinIntervalSec         int
-	MaxIntervalSec         int
+	// MinIntervalSec         int
+	// MaxIntervalSec         int
 }
 
 // description of SimpleTimeSeries
 type DescOfPodTimeSeries struct {
-	MaxTime     int64
-	MinTime     int64
-	Size        int
-	IntervalSec int
+	MaxTime int64
+	MinTime int64
+	Size    int
+	// IntervalSec int
 }
 
 func (c *DescOfTenantTimeSeries) Agg(o *DescOfPodTimeSeries) {
@@ -86,8 +86,8 @@ func (c *DescOfTenantTimeSeries) Agg(o *DescOfPodTimeSeries) {
 	c.MaxOfPodTimeseriesSize = MaxInt(c.MaxOfPodTimeseriesSize, o.Size)
 	c.MinOfPodTimeseriesSize = MinInt(c.MinOfPodTimeseriesSize, o.Size)
 	c.PodCnt += 1
-	c.MinIntervalSec = MinInt(c.MinIntervalSec, o.IntervalSec)
-	c.MaxIntervalSec = MaxInt(c.MaxIntervalSec, o.IntervalSec)
+	// c.MinIntervalSec = MinInt(c.MinIntervalSec, o.IntervalSec)
+	// c.MaxIntervalSec = MaxInt(c.MaxIntervalSec, o.IntervalSec)
 }
 
 func (c *DescOfTenantTimeSeries) Init(o *DescOfPodTimeSeries) {
@@ -99,8 +99,8 @@ func (c *DescOfTenantTimeSeries) Init(o *DescOfPodTimeSeries) {
 	c.MaxOfPodTimeseriesSize = o.Size
 	c.MinOfPodTimeseriesSize = o.Size
 	c.PodCnt = 1
-	c.MinIntervalSec = o.IntervalSec
-	c.MaxIntervalSec = o.IntervalSec
+	// c.MinIntervalSec = o.IntervalSec
+	// c.MaxIntervalSec = o.IntervalSec
 }
 
 type SimpleTimeSeries struct {
@@ -268,10 +268,10 @@ func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string, metricsTopic Me
 	Merge(ret, v.Statistics)
 	minT, maxT := v.getMinMaxTime()
 	stats := &DescOfPodTimeSeries{
-		MinTime:     minT,
-		MaxTime:     maxT,
-		Size:        v.series.Len(),
-		IntervalSec: v.intervalSec,
+		MinTime: minT,
+		MaxTime: maxT,
+		Size:    v.series.Len(),
+		// IntervalSec: v.intervalSec,
 	}
 	return ret, stats
 }

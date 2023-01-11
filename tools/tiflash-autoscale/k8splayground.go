@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -388,6 +391,7 @@ const (
 	EnvKeyKubeRunMode    = "TIFLASH_AS_KUBE_RUN_MODE"
 	EnvKeyEnableSns      = "TIFLASH_AS_ENABLE_SNS"
 	EnvKeyRegion         = "TIFLASH_AS_REGION"
+	EnvKeyPrewarmPoolCap = "PREWARM_POOL_CAP"
 )
 
 // func Logger.Infof(format string, v ...any) {
@@ -395,6 +399,8 @@ const (
 // }
 
 func main() {
+	runtime.SetMutexProfileFraction(5)
+	runtime.SetBlockProfileRate(5)
 	// OpenkruiseTest()
 	// main2()
 	// configmapGetAndUpdateExample()
@@ -408,6 +414,7 @@ func main() {
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyKubeRunMode, os.Getenv(EnvKeyKubeRunMode))
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyEnableSns, os.Getenv(EnvKeyEnableSns))
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyRegion, os.Getenv(EnvKeyRegion))
+	autoscale.Logger.Infof("env.%v: %v", EnvKeyPrewarmPoolCap, os.Getenv(EnvKeyPrewarmPoolCap))
 
 	autoscale.HardCodeEnvPdAddr = os.Getenv(EnvKeyPdAddr)
 	autoscale.HardCodeEnvTidbStatusAddr = os.Getenv(EnvKeyTidbStatusAddr)
@@ -424,6 +431,16 @@ func main() {
 	envEnableSns := os.Getenv(EnvKeyEnableSns)
 	if strings.ToLower(envEnableSns) == "false" {
 		isSnsEnabled = false
+	}
+	envPrewarmPoolCap := os.Getenv(EnvKeyPrewarmPoolCap)
+	if envPrewarmPoolCap != "" {
+		intPrewarmPoolCap, err := strconv.Atoi(envPrewarmPoolCap)
+
+		if err != nil {
+			panic(fmt.Errorf("EnvKeyPrewarmPoolCap parse error: %v", err))
+		} else {
+			autoscale.PrewarmPoolCap = intPrewarmPoolCap
+		}
 	}
 
 	cm := autoscale.NewClusterManager(autoscale.EnvRegion, isSnsEnabled)

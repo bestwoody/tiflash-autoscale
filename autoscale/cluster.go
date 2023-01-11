@@ -390,7 +390,11 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 			/// TODO use tenantMetricDesc to check preCondition of auto scale of this tenant
 			autoScaleIntervalSec := tenant.GetScaleIntervalSec()
 			now := time.Now().Unix()
-			if stats != nil && tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoScaleIntervalSec)+30 {
+			podCnt := tenant.GetCntOfPods()
+			Logger.Debugf("[analyzeTaskLoop][%v]condition of auto scale, metricPodCnt:%v podCnt:%v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoScaleIntervalSec:%v   ", tenant.Name,
+				tenantMetricDesc.PodCnt, podCnt,
+				tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoScaleIntervalSec)
+			if stats != nil && tenantMetricDesc.PodCnt == podCnt && tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoScaleIntervalSec)+30 {
 				cpuusage := stats[0].Avg()
 
 				Logger.Infof("[analyzeTaskLoop][%v]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v ", tenant.Name, tenant.Name,
@@ -399,7 +403,7 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 				minCpuUsageThreshold, maxCpuUsageThreshold := tenant.GetLowerAndUpperCpuScaleThreshold()
 				bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, minCpuUsageThreshold, maxCpuUsageThreshold)
 				if bestPods != -1 && cntOfPods != bestPods {
-					Logger.Infof("[analyzeTaskLoop][%v] resize pods, from %v to  %v , tenant: %v", tenant.GetCntOfPods(), tenant.Name, bestPods, tenant.Name)
+					Logger.Infof("[analyzeTaskLoop][%v] resize pods, from %v to  %v , tenant: %v", tenant.Name, tenant.GetCntOfPods(), bestPods, tenant.Name)
 					c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, bestPods, tenant.Name, c.tsContainer)
 					if c.SnsManager != nil {
 						c.SnsManager.TryToPublishTopology(tenant.Name, time.Now().UnixNano(), tenant.GetPodNames()) // public latest topology into SNS
@@ -411,8 +415,8 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 				if stats == nil {
 					Logger.Errorf("[error][analyzeTaskLoop][%v]empty metric: CPU , tenant: %v", tenant.Name, tenant.Name)
 				} else {
-					Logger.Warnf("[analyzeTaskLoop][%v]condition of auto scale haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoScaleIntervalSec:%v   ", tenant.Name,
-						tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoScaleIntervalSec)
+					Logger.Warnf("[analyzeTaskLoop][%v]condition of auto scale haven't not met, metricPodCnt:%v podCnt:%v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoScaleIntervalSec:%v   ", tenant.Name,
+						tenantMetricDesc.PodCnt, podCnt, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoScaleIntervalSec)
 				}
 			}
 		}
@@ -782,7 +786,7 @@ func (c *ClusterManager) initK8sComponents() {
 	// load k8s pods of cloneset
 	resVer := c.loadPods()
 
-	c.AutoScaleMeta.ScanStateOfPodsAtStartup()
+	c.AutoScaleMeta.ScanStateOfPodsAtStartup(true)
 
 	// watch changes of pods
 	c.wg.Add(2)
@@ -793,17 +797,17 @@ func (c *ClusterManager) initK8sComponents() {
 	go c.podPrepareLoop()
 }
 
-// func (c *ClusterManager) scanPodsStatesLoop() {
-// 	c.wg.Add(1)
-// 	defer c.wg.Done()
-// 	for {
-// 		time.Sleep(60 * time.Second)
-// 		if atomic.LoadInt32(&c.shutdown) != 0 {
-// 			return
-// 		}
-// 		c.AutoScaleMeta.ScanStateOfPodsAtStartup()
-// 	}
-// }
+func (c *ClusterManager) scanPodsStatesLoop() {
+	c.wg.Add(1)
+	defer c.wg.Done()
+	for {
+		time.Sleep(60 * time.Second)
+		if atomic.LoadInt32(&c.shutdown) != 0 {
+			return
+		}
+		c.AutoScaleMeta.ScanStateOfPodsAtStartup(false)
+	}
+}
 
 //
 // func (c *ClusterManager) recoverStatesOfPods() {
@@ -886,8 +890,7 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 	// go ret.analyzeMetrics()
 	go ret.collectTaskCntMetricsFromPromethuesLoop()
 
-	//unsafe
-	// go ret.scanPodsStatesLoop()
+	go ret.scanPodsStatesLoop()
 
 	return ret
 }
@@ -952,7 +955,7 @@ func (c *ClusterManager) removePods(pods2del []string, retryCnt int) (*v1alpha1.
 		*c.CloneSet.Spec.Replicas = oldRelica
 		c.CloneSet.Spec.ScaleStrategy.PodsToDelete = make([]string, 0)
 		// Logger.Errorf("[error][ClusterManager.addNewPods] error encountered! err:%v", err.Error())
-		Logger.Infof("[ClusterManager.removePods] failed, curReplica:%v newReplica:%v, error: %v", *c.CloneSet.Spec.Replicas, *newReplicas, err.Error())
+		Logger.Errorf("[ClusterManager][removePods] failed, curReplica:%v newReplica:%v, error: %v", *c.CloneSet.Spec.Replicas, *newReplicas, err.Error())
 		if c.handleCloneSetApiError(err, "ClusterManager.removePods") {
 			if retryCnt > 0 {
 				c.muOfCloneSet.Unlock()
@@ -965,12 +968,12 @@ func (c *ClusterManager) removePods(pods2del []string, retryCnt int) (*v1alpha1.
 		c.CloneSet = ret.DeepCopy()
 		ret.Spec.ScaleStrategy.PodsToDelete = nil // reset field Spec.ScaleStrategy.PodsToDelete
 		c.muOfCloneSet.Unlock()
+		Logger.Infof("[ClusterManager][removePods] removePods, curReplica:%v newReplica:%v, pods2del: %+v", *c.CloneSet.Spec.Replicas, *newReplicas, pods2del)
 		return ret, nil
 	}
 }
 
 func (c *ClusterManager) podPrepareLoop() {
-
 	defer c.wg.Done()
 	for {
 		time.Sleep(1000 * time.Millisecond)
