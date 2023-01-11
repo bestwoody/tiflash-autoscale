@@ -455,6 +455,10 @@ func main() {
 	autoscale.Logger.Infof("[config]DefaultScaleIntervalSeconds: %v", autoscale.DefaultScaleIntervalSeconds)
 	autoscale.Logger.Infof("[config]HardCodeMaxScaleIntervalSecOfCfg: %v", autoscale.HardCodeMaxScaleIntervalSecOfCfg)
 
+	if autoscale.DefaultAutoPauseIntervalSeconds == 0 {
+		panic("DefaultAutoPauseIntervalSeconds is zero!")
+	}
+
 	cm := autoscale.NewClusterManager(autoscale.EnvRegion, isSnsEnabled)
 	autoscale.Cm4Http = cm
 

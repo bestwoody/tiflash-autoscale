@@ -786,7 +786,8 @@ func (c *ClusterManager) initK8sComponents() {
 	// load k8s pods of cloneset
 	resVer := c.loadPods()
 
-	c.AutoScaleMeta.ScanStateOfPodsAtStartup(true)
+	c.AutoScaleMeta.ScanStateOfPods(true)
+	c.AutoScaleMeta.IsReady.Store(true)
 
 	// watch changes of pods
 	c.wg.Add(2)
@@ -805,7 +806,7 @@ func (c *ClusterManager) scanPodsStatesLoop() {
 		if atomic.LoadInt32(&c.shutdown) != 0 {
 			return
 		}
-		c.AutoScaleMeta.ScanStateOfPodsAtStartup(false)
+		c.AutoScaleMeta.ScanStateOfPods(false)
 	}
 }
 

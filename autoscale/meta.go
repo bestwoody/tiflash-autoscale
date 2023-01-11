@@ -184,7 +184,7 @@ func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta, atSta
 		} else {
 			// if resp.GetTenantID() != "" {
 			oldTenant, _ := podDesc.GetTenantInfo()
-			if (atStartup || oldTenant != "") && !resp.IsUnassigning && (oldTenant != resp.GetTenantID() || podDesc.StartTimeOfAssign != resp.StartTime) {
+			if (atStartup || oldTenant != "" /*startup any pod or runtime tenant's pod */) && !resp.IsUnassigning && (oldTenant != resp.GetTenantID() || podDesc.StartTimeOfAssign != resp.StartTime) {
 				Logger.Infof("[PodDesc][GetCurrentTenant]state need to update, podname: %v tenantDiff:[%v vs %v] stimeDiff:[%v vs %v]", podDesc.Name, podDesc.TenantName, resp.GetTenantID(), podDesc.StartTimeOfAssign, resp.StartTime)
 				meta.mu.Lock()
 				meta.updateLocalMetaPodOfTenant(podDesc.Name, podDesc, resp.GetTenantID(), resp.StartTime)
@@ -438,6 +438,10 @@ func (c *TenantDesc) SyncStateResumed() bool {
 	return c.switchState(TenantStateResuming, TenantStateResumed)
 }
 
+func (c *TenantDesc) SetState(state int32) {
+	atomic.StoreInt32(&c.State, state)
+}
+
 func (c *TenantDesc) GetState() int32 {
 	return atomic.LoadInt32(&c.State)
 }
@@ -461,32 +465,17 @@ var (
 var PrewarmPoolCap = DefaultPrewarmPoolCap
 
 func NewTenantDescDefault(name string) *TenantDesc {
-	minPods := DefaultMinCntOfPod
-	maxPods := DefaultMaxCntOfPod
-	return &TenantDesc{
-		Name: name,
-
-		podMap:  make(map[string]*PodDesc),
-		podList: make([]*PodDesc, 0, 64),
-		conf: ConfigOfComputeCluster{
-			Disabled:                 false,                           ///TODO  disable or not defualt?
-			AutoPauseIntervalSeconds: DefaultAutoPauseIntervalSeconds, // 5min defualt
-			MinCores:                 minPods * DefaultCoreOfPod,
-			MaxCores:                 maxPods * DefaultCoreOfPod,
-			InitCores:                minPods * DefaultCoreOfPod,
-			WindowSeconds:            DefaultScaleIntervalSeconds,
-			CpuScaleRules:            nil,
-			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
-				Name: name,
-			},
-			LastModifiedTs: 0,
-		},
-	}
+	return NewTenantDesc(name, DefaultMinCntOfPod, DefaultMaxCntOfPod)
 }
 
 func NewTenantDesc(name string, minPods int, maxPods int) *TenantDesc {
+	return NewTenantDescWithState(name, minPods, maxPods, TenantStateResumed)
+}
+
+func NewTenantDescWithState(name string, minPods int, maxPods int, state int32) *TenantDesc {
 	return &TenantDesc{
-		Name: name,
+		Name:  name,
+		State: state,
 		// MinCntOfPod: minPods,
 		// MaxCntOfPod: maxPods,
 		podMap:  make(map[string]*PodDesc),
@@ -667,6 +656,7 @@ type AutoScaleMeta struct {
 	k8sCli    *kubernetes.Clientset
 	configMap *v1.ConfigMap //TODO expire entry of removed pod
 	cmMutex   sync.Mutex
+	IsReady   atomic.Bool
 }
 
 func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
@@ -678,7 +668,7 @@ func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
 		// Pod2tenant: make(map[string]string),
 		tenantMap:   make(map[string]*TenantDesc),
 		PodDescMap:  make(map[string]*PodDesc),
-		PrewarmPool: NewPrewarmPool(NewTenantDesc("", 0, PrewarmPoolCap)),
+		PrewarmPool: NewPrewarmPool(NewTenantDescWithState("", 0, PrewarmPoolCap, TenantStateResumed)),
 		k8sCli:      client,
 	}
 	ret.loadTenants()
@@ -778,7 +768,7 @@ func (c *AutoScaleMeta) CopyPodDescMap() map[string]*PodDesc {
 	return ret
 }
 
-func (c *AutoScaleMeta) ScanStateOfPodsAtStartup(atStartUp bool) {
+func (c *AutoScaleMeta) ScanStateOfPods(atStartUp bool) {
 	// Logger.Infof("[ScanStateOfPods] begin")
 	t1 := time.Now().UnixMilli()
 	c.mu.Lock()
@@ -1265,8 +1255,16 @@ func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodD
 		newTenantDesc, ok = c.tenantMap[tenant]
 		if !ok && (OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless) {
 			Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register", tenant)
-			c.SetupTenant(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod)
+			c.setupTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false)
 			newTenantDesc, ok = c.tenantMap[tenant]
+		} else if ok && (OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless) {
+			if !c.IsReady.Load() {
+				newTenantDesc.SetState(TenantStateResumed)
+			} else {
+				if newTenantDesc.GetState() != TenantStateResumed {
+					Logger.Errorf("[AutoScaleMeta][updateLocalMetaPodOfTenant]unexpected tenant state:%v tenant:%v", ConvertStateString(newTenantDesc.GetState()), tenant)
+				}
+			}
 		}
 	} else {
 		newTenantDesc = c.PrewarmPool.WarmedPods
@@ -1566,17 +1564,27 @@ func (c *AutoScaleMeta) SetupTenantWithDefaultArgs4Test(tenant string) bool {
 	}
 }
 
-func (c *AutoScaleMeta) SetupTenant(tenant string, minPods int, maxPods int) bool {
+func (c *AutoScaleMeta) SetupTenantWithState(tenant string, minPods int, maxPods int, state int32) bool {
+	return c.setupTenantWithStateExtraArgs(tenant, minPods, maxPods, state, true)
+}
+
+func (c *AutoScaleMeta) setupTenantWithStateExtraArgs(tenant string, minPods int, maxPods int, state int32, needLock bool) bool {
 	Logger.Infof("[SetupTenant] SetupTenant(%v, %v, %v)", tenant, minPods, maxPods)
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if needLock {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+	}
 	_, ok := c.tenantMap[tenant]
 	if !ok {
-		c.tenantMap[tenant] = NewTenantDesc(tenant, minPods, maxPods)
+		c.tenantMap[tenant] = NewTenantDescWithState(tenant, minPods, maxPods, state)
 		return true
 	} else {
 		return false
 	}
+}
+
+func (c *AutoScaleMeta) SetupTenant(tenant string, minPods int, maxPods int) bool {
+	return c.SetupTenantWithState(tenant, minPods, maxPods, TenantStatePaused)
 }
 
 func (c *AutoScaleMeta) SetupTenantWithConfig(tenant string, confHolder *ConfigOfComputeClusterHolder) bool {

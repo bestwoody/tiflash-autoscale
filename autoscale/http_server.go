@@ -35,7 +35,7 @@ type GetStateResult struct {
 }
 
 const (
-	TenantStateResumedString  = "available"
+	TenantStateResumedString  = "resumed"
 	TenantStateResumingString = "resuming"
 	TenantStatePausedString   = "paused"
 	TenantStatePausingString  = "pausing"
