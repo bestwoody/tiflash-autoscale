@@ -166,7 +166,7 @@ func (c *PodDesc) UnassignTenantWithMockConf(tenant string, forceShutdown bool) 
 	return UnassignTenant(c.IP, tenant, forceShutdown)
 }
 
-func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta) (*supervisor.GetTenantResponse, error) {
+func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta, atStartup bool) (*supervisor.GetTenantResponse, error) {
 	// // for now, it's unnecessary to check result of switchState()
 	// if
 	// c.switchState(PodStateAssigned, PodStateUnassigned)
@@ -184,7 +184,7 @@ func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta) (*sup
 		} else {
 			// if resp.GetTenantID() != "" {
 			oldTenant, _ := podDesc.GetTenantInfo()
-			if !resp.IsUnassigning && (oldTenant != resp.GetTenantID() || podDesc.StartTimeOfAssign != resp.StartTime) {
+			if (atStartup || oldTenant != "") && !resp.IsUnassigning && (oldTenant != resp.GetTenantID() || podDesc.StartTimeOfAssign != resp.StartTime) {
 				Logger.Infof("[PodDesc][GetCurrentTenant]state need to update, podname: %v tenantDiff:[%v vs %v] stimeDiff:[%v vs %v]", podDesc.Name, podDesc.TenantName, resp.GetTenantID(), podDesc.StartTimeOfAssign, resp.StartTime)
 				meta.mu.Lock()
 				meta.updateLocalMetaPodOfTenant(podDesc.Name, podDesc, resp.GetTenantID(), resp.StartTime)
