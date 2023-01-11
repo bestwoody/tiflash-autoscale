@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	_ "net/http/pprof"
+
 	kruiseclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
 	"github.com/tikv/pd/autoscale"
 	supervisor "github.com/tikv/pd/supervisor_proto"
@@ -411,7 +413,11 @@ func main() {
 	autoscale.HardCodeEnvTidbStatusAddr = os.Getenv(EnvKeyTidbStatusAddr)
 	envKubeRunMode := os.Getenv(EnvKeyKubeRunMode)
 	if envKubeRunMode == "local" {
-		autoscale.OptionRunModeIsLocal = true
+		autoscale.OptionRunMode = autoscale.RunModeLocal
+	} else if envKubeRunMode == "dedicated" {
+		autoscale.OptionRunMode = autoscale.RunModeDedicated
+	} else if envKubeRunMode == "serverless" {
+		autoscale.OptionRunMode = autoscale.RunModeServeless
 	}
 	autoscale.EnvRegion = os.Getenv(EnvKeyRegion)
 	isSnsEnabled := true
