@@ -799,7 +799,7 @@ func (c *AutoScaleMeta) ScanStateOfPodsAtStartup(atStartUp bool) {
 				defer wg.Done()
 				// resp, err := GetCurrentTenant(podDesc.IP)
 
-				podDesc.ApiGetCurrentTenantAndCorrect(c)
+				podDesc.ApiGetCurrentTenantAndCorrect(c, atStartUp)
 				// Logger.Debugf("[ScanStateOfPods]GetCurrentTenant tenant:%v pod:%v resp:%v", podDesc.TenantName, podDesc.Name, resp.String())
 				// if err != nil {
 				// 	Logger.Errorf("[ScanStateOfPods]failed to GetCurrentTenant, podname: %v ip: %v, error: %v", podDesc.Name, podDesc.IP, err.Error())
