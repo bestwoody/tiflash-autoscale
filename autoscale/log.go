@@ -63,15 +63,3 @@ func InitZapLogger() {
 func init() {
 	InitZapLogger()
 }
-
-// func Logger.Infof(format string, v ...any) {
-// 	Logger.Infof(format, v...)
-// }
-
-// func Logger.Warnf(format string, v ...any) {
-// 	Logger.Warnf(format, v...)
-// }
-
-// func Logger.Errorf(format string, v ...any) {
-// 	Logger.Errorf(format, v...)
-// }

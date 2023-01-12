@@ -11,9 +11,16 @@ type ConfigManager struct {
 }
 
 // auto: on/off  resume: on/off
+/*  HOW TO Initialize state when new Tenant is setup
+// AutoPauseIntervalSeconds Disabled InitializedState TargetState      Action
+//       0                     false  resumed           resumed        autoscale
+//       0                     true   resumed           paused         pause()
+//       non-0                 false  paused/custom	    auto pause/resume  ResumeReqFromTidb
+//       non-0			       true   resumed	        paused         pause()
+*/
 type ConfigOfComputeCluster struct {
 	Disabled                 bool                 // triger when modified: pause cluster
-	AutoPauseIntervalSeconds int                  // triger when modified: re-range timeseries of metric active_task。 zero means disable auto pause
+	AutoPauseIntervalSeconds int                  // triger when modified: re-range timeseries of metric active_task。 zero means non-auto pause
 	MinCores                 int                  // triger when modified: reload config before next analyze loop
 	MaxCores                 int                  // triger when modified: reload config before next analyze loop
 	InitCores                int                  // triger when modified: reload config before next analyze loop

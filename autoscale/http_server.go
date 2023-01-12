@@ -8,23 +8,20 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
+	"time"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	rest "k8s.io/client-go/rest"
 )
 
-type SetStateResult struct {
-	HasError  int    `json:"hasError"`
-	ErrorInfo string `json:"errorInfo"`
-	State     string `json:"state"`
-}
-
 type ResumeAndGetTopologyResult struct {
 	HasError  int      `json:"hasError"`
 	ErrorInfo string   `json:"errorInfo"`
 	State     string   `json:"state"`
 	Topology  []string `json:"topology"`
+	Timestamp string   `json:"timestamp"`
 }
 
 type GetStateResult struct {
@@ -34,69 +31,35 @@ type GetStateResult struct {
 	NumOfRNs  int    `json:"numOfRNs"`
 }
 
+func (ret *GetStateResult) WriteResp(hasErr int, errInfo string, state string, numOfRNs int) []byte {
+	ret.HasError = hasErr
+	ret.ErrorInfo = errInfo
+	ret.State = state
+	ret.NumOfRNs = numOfRNs
+	retJson, _ := json.Marshal(ret)
+	return retJson
+}
+
 const (
 	TenantStateResumedString  = "resumed"
 	TenantStateResumingString = "resuming"
 	TenantStatePausedString   = "paused"
 	TenantStatePausingString  = "pausing"
+	TenantStateUnknownString  = "unknown"
 )
 
 var (
 	Cm4Http *ClusterManager
 )
 
-// depricated
-func SetStateServer(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	tenantName := req.FormValue("tenantName")
-	ret := SetStateResult{}
-	if tenantName == "" {
-		tenantName = "t1"
-	}
-	flag, currentState, _ := Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
-	if !flag {
-		ret.HasError = 1
-		ret.ErrorInfo = "get state failed"
-		retJson, _ := json.Marshal(ret)
-		io.WriteString(w, string(retJson))
-		return
-	}
-	state := req.FormValue("state")
-	Logger.Infof("[HTTP]SetStateServer, state: %v", state)
-	if currentState == TenantStatePaused && state == "resume" {
-		flag = Cm4Http.Resume(tenantName)
-		if !flag {
-			ret.HasError = 1
-			ret.ErrorInfo = "resume failed"
-			retJson, _ := json.Marshal(ret)
-			io.WriteString(w, string(retJson))
-			return
-		}
-		_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
-		ret.State = ConvertStateString(currentState)
-		retJson, _ := json.Marshal(ret)
-		io.WriteString(w, string(retJson))
-		return
-	} else if currentState == TenantStateResumed && state == "pause" {
-		flag = Cm4Http.Pause(tenantName)
-		if !flag {
-			ret.HasError = 1
-			ret.ErrorInfo = "pause failed"
-			retJson, _ := json.Marshal(ret)
-			io.WriteString(w, string(retJson))
-			return
-		}
-		_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
-		ret.State = ConvertStateString(currentState)
-		retJson, _ := json.Marshal(ret)
-		io.WriteString(w, string(retJson))
-		return
-	}
-	ret.HasError = 1
-	ret.State = ConvertStateString(currentState)
-	ret.ErrorInfo = "invalid set state"
+func (ret *ResumeAndGetTopologyResult) WriteResp(hasErr int, state string, errInfo string, topo []string) []byte {
+	ret.HasError = hasErr
+	ret.State = state
+	ret.ErrorInfo = errInfo
+	ret.Topology = topo
+	ret.Timestamp = strconv.FormatInt(time.Now().UnixNano(), 10)
 	retJson, _ := json.Marshal(ret)
-	io.WriteString(w, string(retJson))
+	return retJson
 }
 
 func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
@@ -104,11 +67,7 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	tenantName := req.FormValue("tidbclusterid")
 	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
 	if tenantName == "" {
-		ret.HasError = 1
-		ret.State = "unknown"
-		ret.ErrorInfo = "invalid set state"
-		retJson, _ := json.Marshal(ret)
-		io.WriteString(w, string(retJson))
+		io.WriteString(w, string(ret.WriteResp(1, "unknown", "invalid tidbclusterid", nil)))
 		return
 	}
 	flag, currentState, _ := Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
@@ -119,10 +78,7 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 		}
 		flag, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 		if !flag {
-			ret.HasError = 1
-			ret.ErrorInfo = "get state failed, tenant does not exist"
-			retJson, _ := json.Marshal(ret)
-			io.WriteString(w, string(retJson))
+			io.WriteString(w, string(ret.WriteResp(1, ConvertStateString(currentState), "get state failed, tenant does not exist", nil)))
 			return
 		}
 	}
@@ -130,25 +86,17 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v", tenantName)
 	if currentState == TenantStatePaused {
 		flag = Cm4Http.Resume(tenantName)
-		ret.Topology = Cm4Http.AutoScaleMeta.GetTopology(tenantName)
+		_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
+
 		if !flag {
-			ret.HasError = 1
-			ret.ErrorInfo = "resume failed"
-			retJson, _ := json.Marshal(ret)
-			io.WriteString(w, string(retJson))
+			io.WriteString(w, string(ret.WriteResp(1, ConvertStateString(currentState), "resume failed", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+			return
 		} else {
-			_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
-			ret.State = ConvertStateString(currentState)
-			retJson, _ := json.Marshal(ret)
-			io.WriteString(w, string(retJson))
+			io.WriteString(w, string(ret.WriteResp(0, ConvertStateString(currentState), "", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+			return
 		}
 	} else {
-		ret.Topology = Cm4Http.AutoScaleMeta.GetTopology(tenantName)
-		ret.HasError = 1
-		ret.State = ConvertStateString(currentState)
-		ret.ErrorInfo = "resume fail, ComputePool state is not paused"
-		retJson, _ := json.Marshal(ret)
-		io.WriteString(w, string(retJson))
+		io.WriteString(w, string(ret.WriteResp(1, ConvertStateString(currentState), "unnecessary to resume, ComputePool state is not paused", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
 	}
 }
 
@@ -167,16 +115,10 @@ func GetStateServer(w http.ResponseWriter, req *http.Request) {
 	ret := GetStateResult{}
 	flag, state, numOfRNs := Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 	if !flag {
-		ret.HasError = 1
-		ret.ErrorInfo = "get state failed"
-		retJson, _ := json.Marshal(ret)
-		io.WriteString(w, string(retJson))
+		io.WriteString(w, string(ret.WriteResp(1, "get state failed", ConvertStateString(state), numOfRNs)))
 		return
 	}
-	ret.NumOfRNs = numOfRNs
-	ret.State = ConvertStateString(state)
-	retJson, _ := json.Marshal(ret)
-	retJsonStr := string(retJson)
+	retJsonStr := string(ret.WriteResp(0, "", ConvertStateString(state), numOfRNs))
 	Logger.Infof("[http]resp of getstate, '%v' ", retJsonStr)
 	io.WriteString(w, retJsonStr)
 }
@@ -271,7 +213,6 @@ func RunAutoscaleHttpServer() {
 	// Logger.Infof("env.TIDB_STATUS_ADDR: %v", autoscale.HardCodeEnvTidbStatusAddr)
 	// Cm4Http = autoscale.NewClusterManager()
 
-	http.HandleFunc("/setstate", SetStateServer)
 	http.HandleFunc("/getstate", GetStateServer)
 	http.HandleFunc("/metrics", GetMetricsFromNode)
 	http.HandleFunc("/resume-and-get-topology", HttpHandleResumeAndGetTopology)

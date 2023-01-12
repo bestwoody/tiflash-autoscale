@@ -23,6 +23,7 @@ const (
 	TenantStateResuming = 1
 	TenantStatePaused   = 2
 	TenantStatePausing  = 3
+	TenantStateUnknown  = 4
 	// CmRnPodStateUnassigned  = 0
 	// CmRnPodStateUnassigning = 1
 	// CmRnPodStateAssigning   = 2
@@ -39,13 +40,11 @@ func ConvertStateString(state int32) string {
 		return TenantStateResumingString
 	} else if state == TenantStatePaused {
 		return TenantStatePausedString
+	} else if state == TenantStateUnknown {
+		return TenantStateUnknownString
 	}
 	return TenantStatePausingString
 }
-
-// type TenantAssignInfo {
-
-// }
 
 type PodDesc struct {
 	Name string
@@ -139,38 +138,16 @@ func GenMockConf() string {
 func (c *PodDesc) AssignTenantWithMockConf(tenant string) (resp *supervisor.Result, err error) {
 	c.muOfGrpc.Lock()
 	defer c.muOfGrpc.Unlock()
-	// oldTenant, st := c.GetTenantInfo()
-	// if oldTenant != "" {
-	// 	Logger.Errorf("[PodDesc][AssignTenant]oldTenant not nil! oldTenant:%v", oldTenant)
-	// 	return &supervisor.Result{HasErr: true, NeedUpdateStateIfErr: true, ErrInfo: "TiFlash has been occupied by a tenant", TenantID: oldTenant, StartTime: st, IsUnassigning: false}, nil
-	// }
 	return AssignTenantHardCodeArgs(c.IP, tenant)
-}
-
-// func (c *PodDesc) switchState(from int32, to int32) bool {
-// 	return atomic.CompareAndSwapInt32(&c.State, from, to)
-// }
-
-func (c *PodDesc) HandleAssignError() {
-	// TODO implements
 }
 
 func (c *PodDesc) UnassignTenantWithMockConf(tenant string, forceShutdown bool) (resp *supervisor.Result, err error) {
 	c.muOfGrpc.Lock()
 	defer c.muOfGrpc.Unlock()
-	// oldTenant, st := c.GetTenantInfo()
-	// if oldTenant != tenant {
-	// 	Logger.Errorf("[PodDesc][AssignTenant]oldTenant != tenant! oldTenant:%v assertTenant:%v", oldTenant, tenant)
-	// 	return &supervisor.Result{HasErr: true, NeedUpdateStateIfErr: true, ErrInfo: "TiFlash has been occupied by a tenant", TenantID: oldTenant, StartTime: st, IsUnassigning: false}, nil
-	// }
 	return UnassignTenant(c.IP, tenant, forceShutdown)
 }
 
 func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta, atStartup bool) (*supervisor.GetTenantResponse, error) {
-	// // for now, it's unnecessary to check result of switchState()
-	// if
-	// c.switchState(PodStateAssigned, PodStateUnassigned)
-	// {
 	if podDesc.muOfGrpc.TryLock() {
 		defer podDesc.muOfGrpc.Unlock()
 		if podDesc.isStateChanging.Load() {
@@ -197,14 +174,6 @@ func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta, atSta
 		Logger.Errorf("[PodDesc][GetCurrentTenant]trylock failed, pod:%v", podDesc.Name)
 		return nil, fmt.Errorf("trylock failed")
 	}
-	// return err == nil && !resp.HasErr
-	// } else {
-	// return false
-	// }
-}
-
-func (c *PodDesc) HandleUnassignError() {
-	// TODO implements
 }
 
 type TenantConf struct { // TODO use it
@@ -496,6 +465,12 @@ func NewTenantDescWithState(name string, minPods int, maxPods int, state int32) 
 	}
 }
 
+func NewTenantDescWithConfigAndState(name string, confHolder *ConfigOfComputeClusterHolder, state int32) *TenantDesc {
+	ret := NewTenantDescWithConfig(name, confHolder)
+	ret.State = state
+	return ret
+}
+
 func NewTenantDescWithConfig(name string, confHolder *ConfigOfComputeClusterHolder) *TenantDesc {
 	ret := &TenantDesc{
 		Name:            name,
@@ -637,13 +612,6 @@ func (p *PrewarmPool) putWarmedPod(tenantName string, pod *PodDesc, isNewPod boo
 	}
 }
 
-// func (p *PrewarmPool) addCntOfPending(delta int32) {
-// 	p.mu.Lock()
-// 	defer p.mu.Unlock()
-// 	p.cntOfPending.Add(delta)
-// 	Logger.Debugf("[CntOfPending]addCntOfPending result:%v", p.cntOfPending.Load())
-// }
-
 type AutoScaleMeta struct {
 	mu sync.Mutex //TODO use RwMutex
 	// Pod2tenant map[string]string
@@ -691,7 +659,29 @@ func (c *AutoScaleMeta) Dump() string {
 	return fmt.Sprintf("tenantcnt:%v, podcnt:%v, warmpool:%v tenants:{%+v}, pods:{%+v} ", len(tenant2PodCntMap), len(pod2ip), c.WarmedPods.GetPodNames(), tenant2PodCntMap, pod2ip)
 }
 
-func (c *AutoScaleMeta) setupMockTenant(name string, minPods, maxPods int, disabled bool, autoPauseIntervalSeconds int, WindowSeconds int, cpuScaleRule *CustomScaleRule) {
+func (c *AutoScaleMeta) setupManualPauseMockTenant(name string, minPods, maxPods int, disabled bool, WindowSeconds int, cpuScaleRule *CustomScaleRule) error {
+	c.SetupTenantWithConfig(name, &ConfigOfComputeClusterHolder{
+		Config: ConfigOfComputeCluster{
+			Disabled:                 disabled, ///TODO  disable or not defualt?
+			AutoPauseIntervalSeconds: 0,        // 0 means ManualPause
+			MinCores:                 minPods * DefaultCoreOfPod,
+			MaxCores:                 maxPods * DefaultCoreOfPod,
+			InitCores:                minPods * DefaultCoreOfPod,
+			WindowSeconds:            WindowSeconds,
+			CpuScaleRules:            cpuScaleRule,
+			ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
+				Name: name,
+			},
+			LastModifiedTs: time.Now().UnixNano(),
+		},
+	}, TenantStateResumed)
+	return nil
+}
+
+func (c *AutoScaleMeta) setupAutoPauseMockTenant(name string, minPods, maxPods int, disabled bool, autoPauseIntervalSeconds int, WindowSeconds int, cpuScaleRule *CustomScaleRule, state int32) error {
+	if autoPauseIntervalSeconds <= 0 {
+		return fmt.Errorf("autoPauseIntervalSeconds <= 0")
+	}
 	c.SetupTenantWithConfig(name, &ConfigOfComputeClusterHolder{
 		Config: ConfigOfComputeCluster{
 			Disabled:                 disabled,                 ///TODO  disable or not defualt?
@@ -706,18 +696,24 @@ func (c *AutoScaleMeta) setupMockTenant(name string, minPods, maxPods int, disab
 			},
 			LastModifiedTs: time.Now().UnixNano(),
 		},
-	})
+	}, state)
+	return nil
 }
 
 func (c *AutoScaleMeta) loadTenants() {
 	c.SetupTenant("t1", 1, 4)
-	c.setupMockTenant("t2", 1, 4, false, 0, 60, nil) // t2 disabled
-	c.setupMockTenant("t3", 1, 4, true, 0, 60, nil)  // t3 enabled
 
-	c.setupMockTenant("t4", 1, 4, false, 0, 120, NewCpuScaleRule(60, 80, "t4")) // t4 enabled scaleInterval: 120s cpuRule:60%~80%
-	c.setupMockTenant("t5", 1, 4, false, 0, 60, NewCpuScaleRule(99, 100, "t5")) //0 1
-	c.setupMockTenant("t6", 1, 4, false, 0, 60, NewCpuScaleRule(99, 100, "t6"))
-	c.setupMockTenant("t7", 1, 4, false, 0, 60, NewCpuScaleRule(20, 80, "t7"))
+	c.setupManualPauseMockTenant("t2", 1, 4, false, 60, nil) // t2
+	c.setupManualPauseMockTenant("t3", 1, 4, true, 60, nil)  // t3
+
+	c.setupManualPauseMockTenant("t4", 1, 4, false, 120, NewCpuScaleRule(60, 80, "t4")) // t4 enabled scaleInterval: 120s cpuRule:60%~80%
+	c.setupManualPauseMockTenant("t5", 1, 4, false, 60, NewCpuScaleRule(99, 100, "t5")) //0 1
+	c.setupManualPauseMockTenant("t6", 1, 4, false, 60, NewCpuScaleRule(99, 100, "t6"))
+	c.setupManualPauseMockTenant("t7", 1, 4, false, 60, NewCpuScaleRule(20, 80, "t7"))
+	c.setupAutoPauseMockTenant("t8", 1, 4, false, 60, 60, NewCpuScaleRule(40, 80, "t8"), TenantStatePaused)
+	c.setupAutoPauseMockTenant("t9", 1, 4, false, 60, 60, NewCpuScaleRule(40, 80, "t9"), TenantStateResumed)
+	c.setupAutoPauseMockTenant("t10", 1, 4, false, 120, 120, NewCpuScaleRule(40, 80, "t10"), TenantStatePaused)
+	c.setupAutoPauseMockTenant("t11", 1, 4, false, 120, 120, NewCpuScaleRule(40, 80, "t11"), TenantStateResumed)
 
 	/// TODO load tenants from config of control panel
 }
@@ -828,39 +824,6 @@ func (c *AutoScaleMeta) ScanStateOfPodsAtRuntime() {
 	//TODO implements since PodWatchLoop and remove/add_Pods_from/into_tenants can correct info, may be this func is unnecessary
 }
 
-// func (c *AutoScaleMeta) initConfigMap() {
-// 	configMapName := "readnode-pod-state"
-// 	var err error
-// 	c.configMap, err = c.k8sCli.CoreV1().ConfigMaps("tiflash-autoscale").Get(context.TODO(), configMapName, metav1.GetOptions{})
-// 	if err != nil {
-// 		c.configMap = &v1.ConfigMap{
-// 			TypeMeta: metav1.TypeMeta{
-// 				Kind:       "ConfigMap",
-// 				APIVersion: "v1",
-// 			},
-// 			ObjectMeta: metav1.ObjectMeta{
-// 				Name: configMapName,
-// 			},
-// 			Data: map[string]string{},
-// 		}
-// 		// get pods in all the namespaces by omitting namespace
-// 		// Or specify namespace to get pods in particular namespace
-// 		c.configMap, err = c.k8sCli.CoreV1().ConfigMaps("tiflash-autoscale").Create(context.TODO(), c.configMap, metav1.CreateOptions{})
-// 		if err != nil {
-// 			panic(err.Error())
-// 		}
-// 	}
-// 	Logger.Infof("loadConfigMap %v", c.configMap.String())
-// }
-
-func (c *AutoScaleMeta) RecoverStatesOfPods4Test() {
-	// c.mu.Lock()
-	// defer c.mu.Unlock()
-	// for podname, poddesc := range c.PodDescMap {
-	// 	poddesc.switchState()
-	// }
-}
-
 func (c *AutoScaleMeta) GetTenants() []*TenantDesc {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -949,26 +912,10 @@ func (c *AutoScaleMeta) GetTenantState(tenant string) (bool, int32, int) {
 	defer c.mu.Unlock()
 	v, ok := c.tenantMap[tenant]
 	if !ok {
-		return false, 0, 0
+		return false, TenantStateUnknown, 0
 	}
 	return true, v.GetState(), v.GetCntOfPods()
 }
-
-// func (c *AutoScaleMeta) GetState(tenant string) string {
-// 	c.mu.Lock()
-// 	defer c.mu.Unlock()
-// 	v, ok := c.tenantMap[tenant]
-// 	if !ok {
-// 		return "pa"
-// 	}
-// 	if v.SyncStateResume() {
-// 		// TODO ensure there is no pods now
-// 		go c.addPodIntoTenant(v.MinCntOfPod, tenant, tsContainer)
-// 		return true
-// 	} else {
-// 		return false
-// 	}
-// }
 
 func (cur *AutoScaleMeta) CreateOrGetPodDesc(podName string, createOrGet bool) *PodDesc {
 	val, ok := cur.PodDescMap[podName]
@@ -990,108 +937,6 @@ func (cur *AutoScaleMeta) CreateOrGetPodDesc(podName string, createOrGet bool) *
 	}
 }
 
-// func ConfigMapPodStateStr(state int, optTenant string) string {
-// 	var value string
-// 	switch state {
-// 	case CmRnPodStateUnassigned:
-// 		value = "unassigned"
-// 	case CmRnPodStateUnassigning:
-// 		value = "unassigning"
-// 	case CmRnPodStateAssigned:
-// 		value = "assigned|" + optTenant
-// 	case CmRnPodStateAssigning:
-// 		value = "assigning"
-// 	}
-// 	return value
-// }
-
-// func ConfigMapPodState(str string) (int, string) {
-// 	switch str {
-// 	case "unassigned":
-// 		return CmRnPodStateUnassigned, ""
-// 	case "unassigning":
-// 		return CmRnPodStateUnassigning, ""
-// 	case "assigning":
-// 		return CmRnPodStateAssigning, ""
-// 	default:
-// 		if !strings.HasPrefix(str, "assigned|") {
-// 			return -1, ""
-// 		}
-// 		i := strings.Index(str, "|")
-// 		tenant := ""
-// 		if i > -1 {
-// 			tenant = str[i+1:]
-// 		}
-// 		return CmRnPodStateAssigned, tenant
-// 	}
-
-// }
-
-// func (c *AutoScaleMeta) handleK8sConfigMapsApiError(err error, caller string) {
-// 	configMapName := "readnode-pod-state"
-// 	errStr := err.Error()
-// 	Logger.Errorf("[error][%v]K8sConfigMapsApiError, err: %+v", caller, errStr)
-// 	if strings.Contains(errStr, "please apply your changes to the latest version") {
-// 		retConfigMap, err := c.k8sCli.CoreV1().ConfigMaps("tiflash-autoscale").Get(context.TODO(), configMapName, metav1.GetOptions{})
-// 		if err != nil {
-// 			Logger.Errorf("[error][%v]K8sConfigMapsApiError, failed to get latest version of configmap, err: %+v", caller, err.Error())
-// 		} else {
-// 			c.configMap = retConfigMap
-// 		}
-// 	}
-// }
-
-// func (c *AutoScaleMeta) setConfigMapState(podName string, state int, optTenant string) error {
-// 	c.cmMutex.Lock()
-// 	defer c.cmMutex.Unlock()
-// 	var value string
-// 	switch state {
-// 	case CmRnPodStateUnassigned:
-// 		value = "unassigned"
-// 	case CmRnPodStateUnassigning:
-// 		value = "unassigning"
-// 	case CmRnPodStateAssigned:
-// 		value = "assigned|" + optTenant
-// 	case CmRnPodStateAssigning:
-// 		value = "assigning"
-// 	}
-// 	// TODO  c.configMap.DeepCopy()
-// 	// TODO err handlling
-// 	if c.configMap.Data == nil {
-// 		c.configMap.Data = make(map[string]string)
-// 	}
-// 	c.configMap.Data[podName] = value
-// 	retConfigMap, err := c.k8sCli.CoreV1().ConfigMaps("tiflash-autoscale").Update(context.TODO(), c.configMap, metav1.UpdateOptions{})
-// 	if err != nil {
-// 		c.handleK8sConfigMapsApiError(err, "AutoScaleMeta::setConfigMapState")
-// 		return err
-// 	}
-// 	c.configMap = retConfigMap
-// 	return nil
-// }
-
-// func (c *AutoScaleMeta) setConfigMapStateBatch(kvMap map[string]string) error {
-// 	c.cmMutex.Lock()
-// 	defer c.cmMutex.Unlock()
-// 	// TODO  c.configMap.DeepCopy()
-// 	// TODO err handlling
-// 	if c.configMap.Data == nil {
-// 		c.configMap.Data = make(map[string]string)
-// 	}
-// 	for k, v := range kvMap {
-// 		c.configMap.Data[k] = v
-// 	}
-
-// 	retConfigMap, err := c.k8sCli.CoreV1().ConfigMaps("tiflash-autoscale").Update(context.TODO(), c.configMap, metav1.UpdateOptions{})
-// 	if err != nil {
-// 		c.handleK8sConfigMapsApiError(err, "AutoScaleMeta::setConfigMapState")
-// 		return err
-// 	}
-// 	Logger.Infof("[AutoScaleMeta]current configmap: %+v", retConfigMap.Data)
-// 	c.configMap = retConfigMap
-// 	return nil
-// }
-
 // Used by controller
 func (c *AutoScaleMeta) addPreWarmFromPending(podName string, desc *PodDesc) {
 	Logger.Infof("[AutoScaleMeta]addPreWarmFromPending %v", podName)
@@ -1104,17 +949,6 @@ func (c *AutoScaleMeta) addPreWarmFromPending(podName string, desc *PodDesc) {
 func (c *AutoScaleMeta) handleChangeOfPodIP(pod *v1.Pod) {
 	// TODO implements
 }
-
-// func (c *AutoScaleMeta) GetRnPodStateAndTenantFromCM(podname string) (int, string) {
-// 	c.cmMutex.Lock()
-// 	defer c.cmMutex.Unlock()
-// 	stateStr, ok := c.configMap.Data[podname]
-// 	if !ok {
-// 		return CmRnPodStateUnknown, ""
-// 	} else {
-// 		return ConfigMapPodState(stateStr)
-// 	}
-// }
 
 // update pods when loadpods when boot and delta events during runtime
 // Used by controller
@@ -1587,13 +1421,13 @@ func (c *AutoScaleMeta) SetupTenant(tenant string, minPods int, maxPods int) boo
 	return c.SetupTenantWithState(tenant, minPods, maxPods, TenantStatePaused)
 }
 
-func (c *AutoScaleMeta) SetupTenantWithConfig(tenant string, confHolder *ConfigOfComputeClusterHolder) bool {
+func (c *AutoScaleMeta) SetupTenantWithConfig(tenant string, confHolder *ConfigOfComputeClusterHolder, state int32) bool {
 	Logger.Infof("[SetupTenant] SetupTenantWithConfig(%v, %+v)", tenant, confHolder.Config)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	_, ok := c.tenantMap[tenant]
 	if !ok {
-		c.tenantMap[tenant] = NewTenantDescWithConfig(tenant, confHolder)
+		c.tenantMap[tenant] = NewTenantDescWithConfigAndState(tenant, confHolder, state)
 		return true
 	} else {
 		return false
