@@ -1,5 +1,13 @@
 package autoscale
 
+const (
+// CmRnPodStateUnassigned  = 0
+// CmRnPodStateUnassigning = 1
+// CmRnPodStateAssigning   = 2
+// CmRnPodStateAssigned    = 3
+// CmRnPodStateUnknown     = -1
+)
+
 // func (c *AutoScaleMeta) initConfigMap() {
 // 	configMapName := "readnode-pod-state"
 // 	var err error

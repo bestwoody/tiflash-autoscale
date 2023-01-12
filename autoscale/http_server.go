@@ -74,11 +74,11 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	if !flag {
 		//register new tenant for serveless tier
 		if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless {
-			Cm4Http.AutoScaleMeta.SetupTenant(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod)
+			Cm4Http.AutoScaleMeta.SetupAutoPauseTenant(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod)
 		}
 		flag, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 		if !flag {
-			io.WriteString(w, string(ret.WriteResp(1, ConvertStateString(currentState), "get state failed, tenant does not exist", nil)))
+			io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "get state failed, tenant does not exist", nil)))
 			return
 		}
 	}
@@ -89,14 +89,14 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 		_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 
 		if !flag {
-			io.WriteString(w, string(ret.WriteResp(1, ConvertStateString(currentState), "resume failed", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+			io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "resume failed", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
 			return
 		} else {
-			io.WriteString(w, string(ret.WriteResp(0, ConvertStateString(currentState), "", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+			io.WriteString(w, string(ret.WriteResp(0, TenantState2String(currentState), "", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
 			return
 		}
 	} else {
-		io.WriteString(w, string(ret.WriteResp(1, ConvertStateString(currentState), "unnecessary to resume, ComputePool state is not paused", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+		io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "unnecessary to resume, ComputePool state is not paused", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
 	}
 }
 
@@ -115,10 +115,10 @@ func GetStateServer(w http.ResponseWriter, req *http.Request) {
 	ret := GetStateResult{}
 	flag, state, numOfRNs := Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 	if !flag {
-		io.WriteString(w, string(ret.WriteResp(1, "get state failed", ConvertStateString(state), numOfRNs)))
+		io.WriteString(w, string(ret.WriteResp(1, "get state failed", TenantState2String(state), numOfRNs)))
 		return
 	}
-	retJsonStr := string(ret.WriteResp(0, "", ConvertStateString(state), numOfRNs))
+	retJsonStr := string(ret.WriteResp(0, "", TenantState2String(state), numOfRNs))
 	Logger.Infof("[http]resp of getstate, '%v' ", retJsonStr)
 	io.WriteString(w, retJsonStr)
 }

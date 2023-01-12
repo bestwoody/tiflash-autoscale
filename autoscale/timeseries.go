@@ -3,6 +3,7 @@ package autoscale
 import (
 	"container/list"
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -74,7 +75,6 @@ type DescOfPodTimeSeries struct {
 	MaxTime int64
 	MinTime int64
 	Size    int
-	// IntervalSec int
 }
 
 func (c *DescOfTenantTimeSeries) Agg(o *DescOfPodTimeSeries) {
@@ -209,6 +209,7 @@ func Add(cur []AvgSigma, values []float64) {
 	}
 }
 
+// checked
 func Merge(cur []AvgSigma, o []AvgSigma) {
 	if o == nil {
 		return
@@ -253,13 +254,11 @@ func NewTimeSeriesContainer(promCli *PromClient) *TimeSeriesContainer {
 	}
 }
 
+// checked
 func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string, metricsTopic MetricsTopic) ([]AvgSigma, *DescOfPodTimeSeries) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	seriesMap := c.SeriesMap(metricsTopic)
-	// if seriesMap == nil {
-	// 	return nil
-	// }
 	v, ok := seriesMap[podname]
 	if !ok {
 		return nil, nil
@@ -271,7 +270,6 @@ func (c *TimeSeriesContainer) GetStatisticsOfPod(podname string, metricsTopic Me
 		MinTime: minT,
 		MaxTime: maxT,
 		Size:    v.series.Len(),
-		// IntervalSec: v.intervalSec,
 	}
 	return ret, stats
 }
@@ -280,9 +278,6 @@ func (c *TimeSeriesContainer) Dump(podname string, topic MetricsTopic) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	seriesMap := c.SeriesMap(topic)
-	// if seriesMap == nil {
-	// 	return
-	// }
 	v, ok := seriesMap[podname]
 	if !ok {
 		return
@@ -302,6 +297,7 @@ func (c *TimeSeriesContainer) DumpAll(topic MetricsTopic) {
 	}
 }
 
+// checked
 func (c *TimeSeriesContainer) GetSnapshotOfTimeSeries(podname string, metricsTopic MetricsTopic) *StatsOfTimeSeries {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -378,7 +374,7 @@ func (cur *SimpleTimeSeries) append(time int64, values []float64) {
 }
 
 type TimeSeriesWriter interface {
-	InsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int) bool /* is_success */
+	InsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int, metricsTopic MetricsTopic) bool /* is_success */
 }
 
 // // TODO depricated
@@ -420,17 +416,18 @@ func (c *MetricsTopic) String() string {
 	return "others"
 }
 
+// checked
 func (cur *TimeSeriesContainer) SeriesMap(metricsTopic MetricsTopic) map[string]*SimpleTimeSeries {
 	if metricsTopic == MetricsTopicCpu {
 		return cur.seriesMap
 	} else if metricsTopic == MetricsTopicTaskCnt {
 		return cur.taskCntSeriesMap
 	} else {
-		return nil
+		panic(fmt.Errorf("unknown MetricsTopicCpu:%v", metricsTopic))
 	}
 }
 
-func (cur *TimeSeriesContainer) CommonInsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int, metricsTopic MetricsTopic) bool /* is_success */ {
+func (cur *TimeSeriesContainer) commonInsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int, metricsTopic MetricsTopic) bool /* is_success */ {
 	cur.mu.Lock()
 	defer cur.mu.Unlock()
 	seriesMap := cur.SeriesMap(metricsTopic)
@@ -461,14 +458,14 @@ func (cur *TimeSeriesContainer) CommonInsertWithUserCfg(key string, time int64, 
 	}
 }
 
-func (cur *TimeSeriesContainer) InsertTaskCntWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int) bool /* is_success */ {
+// func (cur *TimeSeriesContainer) InsertTaskCntWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int) bool /* is_success */ {
 
-	return cur.CommonInsertWithUserCfg(key, time, values, cfgIntervalSec, MetricsTopicTaskCnt)
-}
+// 	return cur.commonInsertWithUserCfg(key, time, values, cfgIntervalSec, MetricsTopicTaskCnt)
+// }
 
-func (cur *TimeSeriesContainer) InsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int) bool /* is_success */ {
+func (cur *TimeSeriesContainer) InsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int, metricsTopic MetricsTopic) bool /* is_success */ {
 
-	return cur.CommonInsertWithUserCfg(key, time, values, cfgIntervalSec, MetricsTopicCpu)
+	return cur.commonInsertWithUserCfg(key, time, values, cfgIntervalSec, metricsTopic)
 	// cur.mu.Lock()
 	// defer cur.mu.Unlock()
 	// val, ok := cur.seriesMap[key]
@@ -547,18 +544,11 @@ type TimeValPairVector struct {
 	Vector []TimeValPair
 }
 
-// / TODO !!! we shoudn't direct use the result of "group by pod" since this pod may served many tenants in the past,
+// checked
 //
-//	we can cut off the other tenants history in the series
+//	 we shoudn't direct use the result of "group by pod" since this pod may served many tenants in the past,
+//		so we can cut off the other tenants history in the series
 func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Duration, tInfoProvider TenantInfoProvider, writer TimeSeriesWriter) (map[string]int, error) {
-	// client, err := api.NewClient(api.Config{
-	// 	Address: "http://localhost:16292",
-	// })
-	// if err != nil {
-	// 	Logger.Infof("Error creating client: %v", err)
-	// 	os.Exit(1)
-	// }
-
 	v1api := v1.NewAPI(c.cli)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -610,7 +600,7 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 				writer.InsertWithUserCfg(string(podName), curTime, []float64{
 					float64(valCopy.Value),
 					0.0, //TODO remove this dummy mem metric
-				}, scaleIntervalSec)
+				}, scaleIntervalSec, MetricsTopicCpu)
 				cnt++
 			}
 			ret[string(podName)] = cnt
@@ -622,16 +612,9 @@ func (c *PromClient) RangeQueryCpu(scaleInterval time.Duration, step time.Durati
 	return ret, nil
 }
 
+// checked
 // query recent 1m , and get latest two cumulative value, and compute delta of them
 func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
-	// client, err := api.NewClient(api.Config{
-	// 	Address: "http://localhost:16292",
-	// })
-	// if err != nil {
-	// 	Logger.Infof("Error creating client: %v", err)
-	// 	os.Exit(1)
-	// }
-
 	v1api := v1.NewAPI(c.cli)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -645,7 +628,6 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 		Logger.Warnf("[warn][PromClient] Warnings: %v", warnings)
 	}
 	// Logger.Infof("[QueryCpu]Result: %v", result.String())
-	// matrix := result.(model.Matrix)
 	matrix, ok := result.(model.Matrix)
 	ret := make(map[string]*TimeValPair)
 	if ok {
@@ -659,7 +641,9 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 				rate := float64(last.Value-nextToLast.Value) / float64(last.Timestamp.Unix()-nextToLast.Timestamp.Unix())
 				v, ok := ret[string(podName)]
 
-				if !ok || (ok && last.Timestamp.Unix() > v.time) { // there many be many series for a same podName, since label may be different
+				// there many be many series for a same podName, since label may be different
+				// use the latest one
+				if !ok || (ok && last.Timestamp.Unix() > v.time) {
 					ret[string(podName)] = &TimeValPair{
 						time:  last.Timestamp.Unix(),
 						value: rate,
@@ -679,6 +663,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	return ret, nil
 }
 
+// checked
 func (c *PromClient) QueryComputeTask() (map[string]*TimeValPair, error) {
 
 	v1api := v1.NewAPI(c.cli)

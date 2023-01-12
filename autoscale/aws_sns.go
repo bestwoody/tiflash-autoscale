@@ -64,6 +64,7 @@ func MakeTopic(c context.Context, api SNSCreateTopicAPI, input *sns.CreateTopicI
 	return api.CreateTopic(c, input)
 }
 
+// /TODO publish topo as long as tenantDesc.podList changed! not only detected by ananlyTask
 func (c *AwsSnsManager) TryToPublishTopology(tidbClusterID string, timestamp int64, topologyList []string) error {
 	topicArn, ok := c.topicArnMap.Load(tidbClusterID)
 	if !ok {

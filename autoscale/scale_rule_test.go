@@ -13,7 +13,7 @@ func isInRangeInt(v int, min int, max int) bool {
 func TestComputeBestCore(t *testing.T) {
 	minPods := 1
 	maxPods := 4
-	tenantDesc := NewTenantDesc("test1", minPods, maxPods)
+	tenantDesc := NewTenantDesc("test1", minPods, maxPods, TenantStateResumed)
 	tenantDesc.SetPod("p1", &PodDesc{Name: "p1"})
 	target, delta := ComputeBestPodsInRuleOfCompute(
 		tenantDesc, ComputeCpuUsageCoresPerPod(1.0), 0.6, 0.8)
@@ -163,7 +163,7 @@ func testComputeBestCoreCommon(t *testing.T, minRatio float64, maxRatio float64)
 	maxPods := 4
 	// minRatio := float64(0.2)
 	// maxRatio := float64(0.8)
-	tenantDesc := NewTenantDesc("test1", minPods, maxPods)
+	tenantDesc := NewTenantDesc("test1", minPods, maxPods, TenantStateResumed)
 	testUsagesArr := []float64{0.0, 0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999, 1.0}
 	cnt1 := 0
 	cnt2 := 0

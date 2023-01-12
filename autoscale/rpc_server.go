@@ -54,7 +54,7 @@ func (s *server) ResumeAndGetTopology(ctx context.Context, req *pb.ResumeAndGetT
 		ret.ErrInfo = ("no such tidb-cluster")
 		return ret, nil
 	} else {
-		ret.CurState = ConvertStateString(curState)
+		ret.CurState = TenantState2String(curState)
 	}
 
 	TimeOutSec := int64(60)

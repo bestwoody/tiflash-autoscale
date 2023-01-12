@@ -15,25 +15,38 @@ import (
 )
 
 const (
-	PodStateUnassigned = 0
-	PodStateAssigned   = 1
-	PodStateInit       = 2
+	// PodStateUnassigned = 0
+	// PodStateAssigned   = 1
+	// PodStateInit       = 2
 	// PodStateUnknown     = 3
 	TenantStateResumed  = 0
 	TenantStateResuming = 1
 	TenantStatePaused   = 2
 	TenantStatePausing  = 3
 	TenantStateUnknown  = 4
-	// CmRnPodStateUnassigned  = 0
-	// CmRnPodStateUnassigning = 1
-	// CmRnPodStateAssigning   = 2
-	// CmRnPodStateAssigned    = 3
-	// CmRnPodStateUnknown     = -1
 
-	FailCntCheckTimeWindow = 300 // 300s
+	FailCntCheckTimeWindow = 300 // 300s used for DoPodsPreWarm
 )
 
-func ConvertStateString(state int32) string {
+var (
+	DefaultMinCntOfPod        = 1
+	DefaultMaxCntOfPod        = 4
+	DefaultCoreOfPod          = 8
+	DefaultLowerLimit         = 0.2
+	DefaultUpperLimit         = 0.8
+	DefaultPrewarmPoolCap     = 4
+	CapacityOfStaticsAvgSigma = 6
+	// DefaultCapOfSeries        = 6  ///default scale interval: 1min. 6 * MetricResolutionSeconds(10s) = 60s (1min)
+	MetricResolutionSeconds = 10 // metric step: 10s
+
+	DefaultAutoPauseIntervalSeconds  = 60
+	DefaultScaleIntervalSeconds      = 60
+	HardCodeMaxScaleIntervalSecOfCfg = 3600
+)
+
+var PrewarmPoolCap = DefaultPrewarmPoolCap
+
+func TenantState2String(state int32) string {
 	if state == TenantStateResumed {
 		return TenantStateResumedString
 	} else if state == TenantStateResuming {
@@ -54,11 +67,13 @@ type PodDesc struct {
 	TenantName        string
 	StartTimeOfAssign int64        //startTime of tenant's assignment
 	mu                sync.RWMutex /// TODO use it //TODO add pod level lock!!!
-	muOfGrpc          sync.Mutex
-	isStateChanging   atomic.Bool
+
+	muOfGrpc        sync.Mutex
+	isStateChanging atomic.Bool
 	// pod        *v1.Pod
 }
 
+// checked
 func (p *PodDesc) SetTenantInfo(tenantName string, startTimeOfAssgin int64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -66,6 +81,7 @@ func (p *PodDesc) SetTenantInfo(tenantName string, startTimeOfAssgin int64) {
 	p.StartTimeOfAssign = startTimeOfAssgin
 }
 
+// checked
 func (p *PodDesc) ClearTenantInfo() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -73,80 +89,28 @@ func (p *PodDesc) ClearTenantInfo() {
 	p.StartTimeOfAssign = time.Now().Unix()
 }
 
+// checked
 func (p *PodDesc) GetTenantInfo() (string, int64) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.TenantName, p.StartTimeOfAssign
 }
 
-func GenMockConf() string {
-	return `tmp_path = "/Users/woody/Desktop/tiflash/integrated/nodes/3508/tiflash/tmp"
-	display_name = "TiFlash"
-	default_profile = "default"
-	users_config = "users.toml"
-	path = "/Users/woody/Desktop/tiflash/integrated/nodes/3508/tiflash/db"
-	capacity = "10737418240"
-	mark_cache_size = 5368709120
-	listen_host = "127.0.0.1"
-	tcp_port = 5000
-	http_port = 4500
-	interserver_http_port = 5500
-	
-	[flash]
-	tidb_status_addr = "127.0.0.1:8500"
-	service_addr = "127.0.0.1:9500"
-	
-	[flash.flash_cluster]
-	master_ttl = 60
-	refresh_interval = 20
-	update_rule_interval = 5
-	cluster_manager_path = "/Users/woody/Desktop/tiflash/integrated/nodes/3508/tiflash/flash_cluster_manager"
-	
-	[flash.proxy]
-	addr = "0.0.0.0:9000"
-	advertise-addr = "127.0.0.1:9000"
-	status-addr = "0.0.0.0:17000"
-	advertise-status-addr = "127.0.0.1:17000"
-	data-dir = "/Users/woody/Desktop/tiflash/integrated/nodes/3508/tiflash/db/proxy"
-	config = "/Users/woody/Desktop/tiflash/integrated/nodes/3508/tiflash/conf/proxy.toml"
-	log-file = "/Users/woody/Desktop/tiflash/integrated/nodes/3508/tiflash/log/proxy.log"
-	log-level = "info"
-	
-	[logger]
-	level = "debug"
-	log = "/Users/woody/Desktop/tiflash/integrated/nodes/3508/tiflash/log/server.log"
-	errorlog = "/Users/woody/Desktop/tiflash/integrated/nodes/3508/tiflash/log/error.log"
-	
-	[application]
-	runAsDaemon = true
-	
-	[profiles]
-	[profiles.default]
-	max_memory_usage = 0
-	max_threads = 20
-	
-	[raft]
-	kvstore_path = "/Users/woody/Desktop/tiflash/integrated/nodes/3508/tiflash/kvstore"
-	pd_addr = "127.0.0.1:6500"
-	ignore_databases = "system,default"
-	storage_engine="dt"
-	
-	[status]
-	metrics_port = "127.0.0.1:17500"`
-}
-
+// checked
 func (c *PodDesc) AssignTenantWithMockConf(tenant string) (resp *supervisor.Result, err error) {
 	c.muOfGrpc.Lock()
 	defer c.muOfGrpc.Unlock()
 	return AssignTenantHardCodeArgs(c.IP, tenant)
 }
 
+// checked
 func (c *PodDesc) UnassignTenantWithMockConf(tenant string, forceShutdown bool) (resp *supervisor.Result, err error) {
 	c.muOfGrpc.Lock()
 	defer c.muOfGrpc.Unlock()
 	return UnassignTenant(c.IP, tenant, forceShutdown)
 }
 
+// checked
 func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta, atStartup bool) (*supervisor.GetTenantResponse, error) {
 	if podDesc.muOfGrpc.TryLock() {
 		defer podDesc.muOfGrpc.Unlock()
@@ -198,9 +162,10 @@ func (c *TenantDesc) Dump() string {
 	pods := c.GetPodNames()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return fmt.Sprintf("TenantDesc{name:%v, pods:%+v, state:%v, conf:%v}", c.Name, pods, ConvertStateString(c.State), c.conf.Dump())
+	return fmt.Sprintf("TenantDesc{name:%v, pods:%+v, state:%v, conf:%v}", c.Name, pods, TenantState2String(c.State), c.conf.Dump())
 }
 
+// checked
 func (c *TenantDesc) SortPodsAtStartUp() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -212,6 +177,7 @@ func (c *TenantDesc) SortPodsAtStartUp() {
 	}
 }
 
+// checked
 func (c *TenantDesc) TryToReloadConf(forceUpdate bool) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -231,54 +197,71 @@ func (c *TenantDesc) TryToReloadConf(forceUpdate bool) bool {
 	return false
 }
 
+// checked
 func (c *TenantDesc) GetInitCntOfPod() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.conf.GetInitCntOfPod()
 }
 
+// checked
 func (c *TenantDesc) GetLowerAndUpperCpuScaleThreshold() (float64, float64) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.conf.GetLowerAndUpperCpuScaleThreshold()
 }
 
+// checked
 func (c *TenantDesc) GetMinCntOfPod() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.conf.MinCores / DefaultCoreOfPod
+	ret := MaxInt(c.conf.MinCores/DefaultCoreOfPod, 1)
+	if c.conf.MinCores%DefaultCoreOfPod != 0 || c.conf.MinCores <= 0 {
+		Logger.Errorf("[Conf][%v]invalid min_cores:%v, min_pods:%v", c.Name, c.conf.MinCores, ret)
+	}
+	return ret
 }
 
+// checked
 func (c *TenantDesc) GetMaxCntOfPod() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.conf.MaxCores / DefaultCoreOfPod
+	ret := MaxInt(c.conf.MaxCores/DefaultCoreOfPod, MaxInt(c.conf.MinCores/DefaultCoreOfPod, 1))
+	if c.conf.MaxCores%DefaultCoreOfPod != 0 || c.conf.MaxCores <= 0 {
+		Logger.Errorf("[Conf][%v]invalid max_cores:%v, max_pods:%v", c.Name, c.conf.MaxCores, ret)
+	}
+	return ret
 }
 
+// checked
 func (c *TenantDesc) IsDisabled() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.conf.Disabled
 }
 
+// checked
 func (c *TenantDesc) GetScaleIntervalSec() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.conf.WindowSeconds
 }
 
+// checked
 func (c *TenantDesc) GetAutoPauseIntervalSec() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.conf.AutoPauseIntervalSeconds
 }
 
+// checked
 func (c *TenantDesc) GetCntOfPods() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return len(c.podMap)
 }
 
+// checked, it has TODO
 func (c *TenantDesc) SetPod(k string, v *PodDesc) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -291,6 +274,7 @@ func (c *TenantDesc) SetPod(k string, v *PodDesc) {
 	v.TenantName = c.Name ///TODO use poddesc.mutex
 }
 
+// checked
 func (c *TenantDesc) SetPodWithTenantInfo(k string, v *PodDesc, startTimeOfAssign int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -303,6 +287,7 @@ func (c *TenantDesc) SetPodWithTenantInfo(k string, v *PodDesc, startTimeOfAssig
 	v.SetTenantInfo(c.Name, startTimeOfAssign)
 }
 
+// checked
 func (c *TenantDesc) GetPod(k string) (*PodDesc, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -310,6 +295,7 @@ func (c *TenantDesc) GetPod(k string) (*PodDesc, bool) {
 	return v, ok
 }
 
+// checked
 func (c *TenantDesc) RemovePod(k string) *PodDesc {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -330,9 +316,8 @@ func (c *TenantDesc) RemovePod(k string) *PodDesc {
 	}
 }
 
+// checked
 func (c *TenantDesc) popOnePod() *PodDesc {
-	// c.mu.Lock()
-	// defer c.mu.Unlock()
 	if len(c.podList) > 0 {
 		curPod := c.podList[len(c.podList)-1]
 		c.podList = c.podList[:len(c.podList)-1]
@@ -347,6 +332,7 @@ func (c *TenantDesc) popOnePod() *PodDesc {
 	}
 }
 
+// checked
 func (c *TenantDesc) PopPods(cnt int, ret []*PodDesc) (int, []*PodDesc) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -363,6 +349,7 @@ func (c *TenantDesc) PopPods(cnt int, ret []*PodDesc) (int, []*PodDesc) {
 	return cnt, ret
 }
 
+// checked
 func (c *TenantDesc) GetPodNames() []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -373,13 +360,14 @@ func (c *TenantDesc) GetPodNames() []string {
 	return ret
 }
 
-func (c *TenantDesc) GetPodIps() []string {
+// checked
+func (c *TenantDesc) GetPodAddrs() []string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	ret := make([]string, 0, len(c.podMap))
 	for _, v := range c.podList {
 		if v.IP != "" {
-			ret = append(ret, v.IP)
+			ret = append(ret, fmt.Sprintf("%v:3930", v.IP))
 		} else {
 			Logger.Errorf("[TenantDesc][GetPodIps]pod ip is null! tenant:%v pod:%v", c.Name, v.Name)
 		}
@@ -387,61 +375,72 @@ func (c *TenantDesc) GetPodIps() []string {
 	return ret
 }
 
+// checked
 func (c *TenantDesc) switchState(from int32, to int32) bool {
 	return atomic.CompareAndSwapInt32(&c.State, from, to)
 }
 
+// checked
 func (c *TenantDesc) SyncStatePausing() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.switchState(TenantStateResumed, TenantStatePausing)
 }
 
+// checked
 func (c *TenantDesc) SyncStatePaused() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.switchState(TenantStatePausing, TenantStatePaused)
 }
 
+// checked
 func (c *TenantDesc) SyncStateResuming() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.switchState(TenantStatePaused, TenantStateResuming)
 }
 
+// checked
 func (c *TenantDesc) SyncStateResumed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.switchState(TenantStateResuming, TenantStateResumed)
 }
 
+// checked
 func (c *TenantDesc) SetState(state int32) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	atomic.StoreInt32(&c.State, state)
 }
 
+// checked
+func (c *TenantDesc) IsStateCorrect() (bool, int32) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if atomic.LoadInt32(&c.State) == TenantStatePaused && len(c.podMap) > 0 {
+		return false, TenantStateResumed
+	}
+	return true, atomic.LoadInt32(&c.State)
+}
+
+// checked
 func (c *TenantDesc) GetState() int32 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return atomic.LoadInt32(&c.State)
 }
 
-var (
-	DefaultMinCntOfPod        = 1
-	DefaultMaxCntOfPod        = 4
-	DefaultCoreOfPod          = 8
-	DefaultLowerLimit         = 0.2
-	DefaultUpperLimit         = 0.8
-	DefaultPrewarmPoolCap     = 4
-	CapacityOfStaticsAvgSigma = 6
-	// DefaultCapOfSeries        = 6  ///default scale interval: 1min. 6 * MetricResolutionSeconds(10s) = 60s (1min)
-	MetricResolutionSeconds = 10 // metric step: 10s
+// func NewTenantDescDefault(name string) *TenantDesc {
+// 	return NewTenantDesc(name, DefaultMinCntOfPod, DefaultMaxCntOfPod)
+// }
 
-	DefaultAutoPauseIntervalSeconds  = 60
-	DefaultScaleIntervalSeconds      = 60
-	HardCodeMaxScaleIntervalSecOfCfg = 3600
-)
+// func NewTenantDesc(name string, minPods int, maxPods int) *TenantDesc {
+// 	return NewTenantDescWithState(name, minPods, maxPods, TenantStateResumed)
+// }
 
-var PrewarmPoolCap = DefaultPrewarmPoolCap
-
-func NewTenantDescDefault(name string) *TenantDesc {
-	return NewTenantDesc(name, DefaultMinCntOfPod, DefaultMaxCntOfPod)
-}
-
-func NewTenantDesc(name string, minPods int, maxPods int) *TenantDesc {
-	return NewTenantDescWithState(name, minPods, maxPods, TenantStateResumed)
-}
-
-func NewTenantDescWithState(name string, minPods int, maxPods int, state int32) *TenantDesc {
+func NewAutoPauseTenantDescWithState(name string, minPods int, maxPods int, state int32) *TenantDesc {
 	return &TenantDesc{
 		Name:  name,
 		State: state,
@@ -490,13 +489,10 @@ type PrewarmPoolOpResult struct {
 type PrewarmPool struct {
 	mu         sync.Mutex
 	WarmedPods *TenantDesc
-	// CntToCreate atomic.Int32
+
 	cntOfPending          atomic.Int32
 	tenantLastOpResultMap map[string]*PrewarmPoolOpResult
 	SoftLimit             int // expected size of pool
-	// cntOfBooking chan *PodDesc
-	//
-	// cntOfBookingPending
 }
 
 func NewPrewarmPool(warmedPods *TenantDesc) *PrewarmPool {
@@ -508,6 +504,7 @@ func NewPrewarmPool(warmedPods *TenantDesc) *PrewarmPool {
 	}
 }
 
+// checked
 func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 	failCntTotal := 0
 	p.mu.Lock()
@@ -534,7 +531,7 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 	if delta > 0 {
 		p.cntOfPending.Add(int32(delta))
 		Logger.Debugf("[CntOfPending]DoPodsWarm, add delta %v, result:%v", delta, p.cntOfPending.Load())
-		_, err = c.addNewPods(int32(delta), 0)
+		_, err = c.addNewPods(int32(delta), 2)
 		if err != nil { // revert
 			p.cntOfPending.Add(int32(-delta))
 			Logger.Debugf("[CntOfPending]DoPodsWarm, revert delta %v, result:%v", delta, p.cntOfPending.Load())
@@ -558,11 +555,11 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 		}
 	}
 	if err != nil {
-		/// TODO handle error
 		Logger.Errorf("[error][PrewarmPool.DoPodsWarm] error encountered! err:%v", err.Error())
 	}
 }
 
+// checked
 func (p *PrewarmPool) getWarmedPods(tenantName string, cnt int) ([]*PodDesc, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -591,12 +588,13 @@ func (p *PrewarmPool) getWarmedPods(tenantName string, cnt int) ([]*PodDesc, int
 	return podsToAssign, cnt
 }
 
+// checked
 func (p *PrewarmPool) putWarmedPod(tenantName string, pod *PodDesc, isNewPod bool) {
 	Logger.Infof("[PrewarmPool]put warmed pod tenant: %v pod: %v newPod:%v", tenantName, pod.Name, isNewPod)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if isNewPod {
-		if p.cntOfPending.Load() > 0 { /// TODO use a more graceful way
+		if p.cntOfPending.Load() > 0 { /// .it maybe <0 when startUp, it's used for that case but harmless since it will be correct after startUp. TODO use a more graceful way
 			p.cntOfPending.Add(-1)
 			Logger.Debugf("[CntOfPending]putWarmedPod result:%v", p.cntOfPending.Load())
 		} else {
@@ -613,20 +611,18 @@ func (p *PrewarmPool) putWarmedPod(tenantName string, pod *PodDesc, isNewPod boo
 }
 
 type AutoScaleMeta struct {
-	mu sync.Mutex //TODO use RwMutex
-	// Pod2tenant map[string]string
+	mu         sync.Mutex //TODO use RwMutex
 	tenantMap  map[string]*TenantDesc
 	PodDescMap map[string]*PodDesc
-	//PrewarmPods *TenantDesc
 	*PrewarmPool
-	// pendingCnt int32 // atomic
 
-	k8sCli    *kubernetes.Clientset
-	configMap *v1.ConfigMap //TODO expire entry of removed pod
-	cmMutex   sync.Mutex
-	IsReady   atomic.Bool
+	k8sCli *kubernetes.Clientset
+	// configMap      *v1.ConfigMap //TODO expire entry of removed pod
+	// cmMutex        sync.Mutex
+	IsRuntimeReady atomic.Bool
 }
 
+// checked
 func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -636,14 +632,17 @@ func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
 		// Pod2tenant: make(map[string]string),
 		tenantMap:   make(map[string]*TenantDesc),
 		PodDescMap:  make(map[string]*PodDesc),
-		PrewarmPool: NewPrewarmPool(NewTenantDescWithState("", 0, PrewarmPoolCap, TenantStateResumed)),
+		PrewarmPool: NewPrewarmPool(NewAutoPauseTenantDescWithState("", 0, PrewarmPoolCap, TenantStateResumed)),
 		k8sCli:      client,
 	}
-	ret.loadTenants()
+	if OptionRunMode == RunModeLocal {
+		ret.loadTenants4Test()
+	}
 	// ret.initConfigMap()
 	return ret
 }
 
+// checked
 func (c *AutoScaleMeta) Dump() string {
 	pod2ip := make(map[string]string)
 	tenant2PodCntMap := make(map[string]([]string))
@@ -659,6 +658,7 @@ func (c *AutoScaleMeta) Dump() string {
 	return fmt.Sprintf("tenantcnt:%v, podcnt:%v, warmpool:%v tenants:{%+v}, pods:{%+v} ", len(tenant2PodCntMap), len(pod2ip), c.WarmedPods.GetPodNames(), tenant2PodCntMap, pod2ip)
 }
 
+// checked
 func (c *AutoScaleMeta) setupManualPauseMockTenant(name string, minPods, maxPods int, disabled bool, WindowSeconds int, cpuScaleRule *CustomScaleRule) error {
 	c.SetupTenantWithConfig(name, &ConfigOfComputeClusterHolder{
 		Config: ConfigOfComputeCluster{
@@ -678,6 +678,7 @@ func (c *AutoScaleMeta) setupManualPauseMockTenant(name string, minPods, maxPods
 	return nil
 }
 
+// checked
 func (c *AutoScaleMeta) setupAutoPauseMockTenant(name string, minPods, maxPods int, disabled bool, autoPauseIntervalSeconds int, WindowSeconds int, cpuScaleRule *CustomScaleRule, state int32) error {
 	if autoPauseIntervalSeconds <= 0 {
 		return fmt.Errorf("autoPauseIntervalSeconds <= 0")
@@ -700,8 +701,9 @@ func (c *AutoScaleMeta) setupAutoPauseMockTenant(name string, minPods, maxPods i
 	return nil
 }
 
-func (c *AutoScaleMeta) loadTenants() {
-	c.SetupTenant("t1", 1, 4)
+// checked
+func (c *AutoScaleMeta) loadTenants4Test() {
+	c.SetupAutoPauseTenant("t1", 1, 4)
 
 	c.setupManualPauseMockTenant("t2", 1, 4, false, 60, nil) // t2
 	c.setupManualPauseMockTenant("t3", 1, 4, true, 60, nil)  // t3
@@ -723,6 +725,7 @@ type TenantInfoProvider interface {
 	GetTenantScaleIntervalSec(tenant string) (int, bool) // return interval, hasErr
 }
 
+// checked
 func (c *AutoScaleMeta) GetTenantInfoOfPod(podName string) (string, int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -733,6 +736,7 @@ func (c *AutoScaleMeta) GetTenantInfoOfPod(podName string) (string, int64) {
 	return v.GetTenantInfo()
 }
 
+// checked
 func (c *AutoScaleMeta) GetTenantScaleIntervalSec(tenant string) (int, bool /*hasErr*/) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -864,7 +868,7 @@ func (c *AutoScaleMeta) GetTenantNames() []string {
 	return ret
 }
 
-func (c *AutoScaleMeta) Pause(tenant string, tsContainer *TimeSeriesContainer) bool {
+func (c *AutoScaleMeta) AsyncPause(tenant string, tsContainer *TimeSeriesContainer) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v, ok := c.tenantMap[tenant]
@@ -897,6 +901,7 @@ func (c *AutoScaleMeta) AsyncResume(tenant string, tsContainer *TimeSeriesContai
 	}
 }
 
+// checked
 func (c *AutoScaleMeta) GetTopology(tenant string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -904,7 +909,7 @@ func (c *AutoScaleMeta) GetTopology(tenant string) []string {
 	if !ok {
 		return nil
 	}
-	return v.GetPodIps()
+	return v.GetPodAddrs()
 }
 
 func (c *AutoScaleMeta) GetTenantState(tenant string) (bool, int32, int) {
@@ -1087,16 +1092,30 @@ func (c *AutoScaleMeta) updateLocalMetaPodOfTenant(podName string, podDesc *PodD
 	var newTenantDesc *TenantDesc
 	if tenant != "" {
 		newTenantDesc, ok = c.tenantMap[tenant]
-		if !ok && (OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless) {
-			Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register", tenant)
-			c.setupTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false)
-			newTenantDesc, ok = c.tenantMap[tenant]
-		} else if ok && (OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless) {
-			if !c.IsReady.Load() {
-				newTenantDesc.SetState(TenantStateResumed)
+
+		if !ok {
+			if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless {
+				Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register", tenant)
+				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false)
+				newTenantDesc, ok = c.tenantMap[tenant]
 			} else {
+				///TODO consider dedicated case
+			}
+		} else {
+			if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless {
+				if !c.IsRuntimeReady.Load() {
+					newTenantDesc.SetState(TenantStateResumed)
+				} else {
+					if newTenantDesc.GetState() != TenantStateResumed {
+						Logger.Errorf("[AutoScaleMeta][updateLocalMetaPodOfTenant]unexpected tenant state:%v tenant:%v", TenantState2String(newTenantDesc.GetState()), tenant)
+						newTenantDesc.SetState(TenantStateResumed)
+					}
+				}
+			} else {
+				///TODO consider dedicated case deeper
 				if newTenantDesc.GetState() != TenantStateResumed {
-					Logger.Errorf("[AutoScaleMeta][updateLocalMetaPodOfTenant]unexpected tenant state:%v tenant:%v", ConvertStateString(newTenantDesc.GetState()), tenant)
+					Logger.Errorf("[AutoScaleMeta][updateLocalMetaPodOfTenant]unexpected tenant state:%v tenant:%v", TenantState2String(newTenantDesc.GetState()), tenant)
+					newTenantDesc.SetState(TenantStateResumed)
 				}
 			}
 		}
@@ -1294,9 +1313,9 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 	apiWg.Add(len(podsToUnassign))
 	for _, v := range podsToUnassign {
 		// TODO async call grpc unassign api
+		v.isStateChanging.Store(true)
+		defer v.isStateChanging.Store(false)
 		go func(v *PodDesc) {
-			v.isStateChanging.Store(true)
-			defer v.isStateChanging.Store(false)
 			defer apiWg.Done()
 			resp, err := v.UnassignTenantWithMockConf(tenant, isPause)
 			localMu.Lock()
@@ -1386,23 +1405,23 @@ func (c *AutoScaleMeta) AddPod4Test(podName string) bool {
 	return true
 }
 
-func (c *AutoScaleMeta) SetupTenantWithDefaultArgs4Test(tenant string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	_, ok := c.tenantMap[tenant]
-	if !ok {
-		c.tenantMap[tenant] = NewTenantDescDefault(tenant)
-		return true
-	} else {
-		return false
-	}
+// func (c *AutoScaleMeta) SetupTenantWithDefaultArgs4Test(tenant string) bool {
+// 	c.mu.Lock()
+// 	defer c.mu.Unlock()
+// 	_, ok := c.tenantMap[tenant]
+// 	if !ok {
+// 		c.tenantMap[tenant] = NewTenantDescDefault(tenant)
+// 		return true
+// 	} else {
+// 		return false
+// 	}
+// }
+
+func (c *AutoScaleMeta) SetupAutoPauseTenantWithState(tenant string, minPods int, maxPods int, state int32) bool {
+	return c.setupAutoPauseTenantWithStateExtraArgs(tenant, minPods, maxPods, state, true)
 }
 
-func (c *AutoScaleMeta) SetupTenantWithState(tenant string, minPods int, maxPods int, state int32) bool {
-	return c.setupTenantWithStateExtraArgs(tenant, minPods, maxPods, state, true)
-}
-
-func (c *AutoScaleMeta) setupTenantWithStateExtraArgs(tenant string, minPods int, maxPods int, state int32, needLock bool) bool {
+func (c *AutoScaleMeta) setupAutoPauseTenantWithStateExtraArgs(tenant string, minPods int, maxPods int, state int32, needLock bool) bool {
 	Logger.Infof("[SetupTenant] SetupTenant(%v, %v, %v)", tenant, minPods, maxPods)
 	if needLock {
 		c.mu.Lock()
@@ -1410,15 +1429,15 @@ func (c *AutoScaleMeta) setupTenantWithStateExtraArgs(tenant string, minPods int
 	}
 	_, ok := c.tenantMap[tenant]
 	if !ok {
-		c.tenantMap[tenant] = NewTenantDescWithState(tenant, minPods, maxPods, state)
+		c.tenantMap[tenant] = NewAutoPauseTenantDescWithState(tenant, minPods, maxPods, state)
 		return true
 	} else {
 		return false
 	}
 }
 
-func (c *AutoScaleMeta) SetupTenant(tenant string, minPods int, maxPods int) bool {
-	return c.SetupTenantWithState(tenant, minPods, maxPods, TenantStatePaused)
+func (c *AutoScaleMeta) SetupAutoPauseTenant(tenant string, minPods int, maxPods int) bool {
+	return c.SetupAutoPauseTenantWithState(tenant, minPods, maxPods, TenantStatePaused)
 }
 
 func (c *AutoScaleMeta) SetupTenantWithConfig(tenant string, confHolder *ConfigOfComputeClusterHolder, state int32) bool {
@@ -1434,41 +1453,42 @@ func (c *AutoScaleMeta) SetupTenantWithConfig(tenant string, confHolder *ConfigO
 	}
 }
 
-func (c *AutoScaleMeta) UpdateTenant4Test(podName string, newTenant string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	podDesc, ok := c.PodDescMap[podName]
-	if !ok {
-		return false
-	} else {
-		// del old info
-		tenantDesc, ok := c.tenantMap[podDesc.TenantName]
-		if !ok {
-			//TODO maintain idle pods
-			// return false
-		} else {
+// func (c *AutoScaleMeta) UpdateTenant4Test(podName string, newTenant string) bool {
+// 	c.mu.Lock()
+// 	defer c.mu.Unlock()
+// 	podDesc, ok := c.PodDescMap[podName]
+// 	if !ok {
+// 		return false
+// 	} else {
+// 		// del old info
+// 		tenantDesc, ok := c.tenantMap[podDesc.TenantName]
+// 		if !ok {
+// 			//TODO maintain idle pods
+// 			// return false
+// 		} else {
 
-			tenantDesc.RemovePod(podName)
-			// podMap := tenantDesc.pods
-			// _, ok = podMap[podName]
-			// if ok {
-			// 	delete(podMap, podName)
-			// }
+// 			tenantDesc.RemovePod(podName)
+// 			// podMap := tenantDesc.pods
+// 			// _, ok = podMap[podName]
+// 			// if ok {
+// 			// 	delete(podMap, podName)
+// 			// }
 
-		}
-	}
-	podDesc.TenantName = newTenant
-	// var newPodMap map[string]*PodDesc
-	newTenantDesc, ok := c.tenantMap[newTenant]
-	if !ok {
-		return false
-		// newPodMap = make(map[string]*PodDesc)
-		// c.TenantMap[newTenant] = newPodMap
-	}
-	newTenantDesc.SetPod(podName, podDesc)
-	return true
-}
+// 		}
+// 	}
+// 	podDesc.TenantName = newTenant
+// 	// var newPodMap map[string]*PodDesc
+// 	newTenantDesc, ok := c.tenantMap[newTenant]
+// 	if !ok {
+// 		return false
+// 		// newPodMap = make(map[string]*PodDesc)
+// 		// c.TenantMap[newTenant] = newPodMap
+// 	}
+// 	newTenantDesc.SetPod(podName, podDesc)
+// 	return true
+// }
 
+// checked
 func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSeriesContainer, caller string, metricsTopic MetricsTopic) ([]AvgSigma, map[string]float64 /* avg_map */, map[string]int64 /* cnt_map*/, map[string]*DescOfPodTimeSeries, *DescOfTenantTimeSeries) {
 	c.mu.Lock()
 
@@ -1497,7 +1517,6 @@ func (c *AutoScaleMeta) ComputeStatisticsOfTenant(tenantName string, tsc *TimeSe
 					MinTime: dummyTime,
 					MaxTime: dummyTime,
 					Size:    0,
-					// IntervalSec: 0,
 				}
 			}
 
