@@ -74,7 +74,7 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	if !flag {
 		//register new tenant for serveless tier
 		if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless {
-			Cm4Http.AutoScaleMeta.SetupAutoPauseTenant(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod)
+			Cm4Http.AutoScaleMeta.SetupAutoPauseTenantWithPausedState(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod)
 		}
 		flag, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 		if !flag {
