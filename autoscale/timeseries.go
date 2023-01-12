@@ -321,6 +321,7 @@ func (c *TimeSeriesContainer) GetSnapshotOfTimeSeries(podname string, metricsTop
 		MinTime: minTime, MaxTime: maxTime}
 }
 
+// checked
 func (c *TimeSeriesContainer) ResetMetricsOfPod(podname string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -335,7 +336,7 @@ func (c *TimeSeriesContainer) ResetMetricsOfPod(podname string) {
 
 	v, ok = c.taskCntSeriesMap[podname]
 	if ok {
-		delete(c.seriesMap, podname)
+		delete(c.taskCntSeriesMap, podname)
 		// v.Reset()
 		Logger.Infof("[ResetMetricsOfPod]reset taskcnt metrics of pod %v , cnt:%v cond1:%v  cond1&cond2: %v ", podname, v.ValsOfMetric().Cnt(), (v.series != nil), (v.series != nil && v.series.Front() != nil))
 	} else {

@@ -176,7 +176,7 @@ func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*Po
 					addLabel(metric, "metrics_topic", "cadvisor")
 					addLabel(metric, "metrics_source", "compute_pod")
 					addLabel(metric, "pod_ip", v.IP)
-					addLabel(metric, "tidb_cluster", v.TenantName)
+					addLabel(metric, "tidb_cluster", v.GetTenantName())
 				}
 			}
 			// fmt.Println(metric.Label)

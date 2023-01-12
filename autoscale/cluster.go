@@ -286,7 +286,7 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 		lastTs = roundBeginTime.Unix()
 		tenant := task.tenant
 
-		Logger.Infof("[analyzeTaskLoop][%v]round begin. tenant: %v", tenant.Name, tenant.Name)
+		Logger.Debugf("[analyzeTaskLoop][%v]round begin. tenant: %v", tenant.Name, tenant.Name)
 		tenant.TryToReloadConf(false) /// TODO implement
 
 		cntOfPods := tenant.GetCntOfPods()
@@ -328,7 +328,7 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 				if tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoPauseIntervalSec)+30 {
 					totalTaskCnt := taskCntStats[0].Sum()
 					if totalTaskCnt < 1 { //test is zero, since it's a float, "< 1" may be better
-						Logger.Infof("[analyzeTaskLoop][%v]auto pause, tenant: %v", tenant.Name, tenant.Name)
+						Logger.Infof("[analyzeTaskLoop][%v]auto pause, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ", tenant.Name, tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoPauseIntervalSec)
 						c.AsyncPause(tenant.Name)
 						// continue //skip auto scale TODO revert
 					}
@@ -388,7 +388,7 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 			}
 		}
 
-		Logger.Infof("[analyzeTaskLoop][%v]round end. tenant: %v , cost %vms", tenant.Name, tenant.Name, time.Now().UnixMilli()-roundBeginTime.UnixMilli())
+		Logger.Debugf("[analyzeTaskLoop][%v]round end. tenant: %v , cost %vms", tenant.Name, tenant.Name, time.Now().UnixMilli()-roundBeginTime.UnixMilli())
 	}
 	task.endFin.Store(true)
 	task.refOfAnalyzeTaskMap.Delete(task.tenant.Name)
@@ -824,7 +824,7 @@ func (c *ClusterManager) addNewPods(delta int32, retryCnt int) (*v1alpha1.CloneS
 	ret, err := c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), c.CloneSet, metav1.UpdateOptions{})
 	if err != nil {
 		*c.CloneSet.Spec.Replicas = oldRelica
-		Logger.Infof("[ClusterManager.addPods] failed, error: %v", err.Error())
+		Logger.Infof("[ClusterManager][addPods] failed, curReplica:%v newReplica:%v, error: %v", oldRelica, *newReplicas, err.Error())
 		if c.handleCloneSetApiError(err, "ClusterManager.addNewPods") {
 			if retryCnt > 0 {
 				c.muOfCloneSet.Unlock()
@@ -836,6 +836,7 @@ func (c *ClusterManager) addNewPods(delta int32, retryCnt int) (*v1alpha1.CloneS
 	} else {
 		c.CloneSet = ret.DeepCopy()
 		c.muOfCloneSet.Unlock()
+		Logger.Infof("[ClusterManager][removePods] removePods, curReplica:%v newReplica:%v", oldRelica, *newReplicas)
 		return ret, nil
 	}
 
@@ -855,7 +856,7 @@ func (c *ClusterManager) removePods(pods2del []string, retryCnt int) (*v1alpha1.
 		*c.CloneSet.Spec.Replicas = oldRelica
 		c.CloneSet.Spec.ScaleStrategy.PodsToDelete = make([]string, 0)
 		// Logger.Errorf("[error][ClusterManager.addNewPods] error encountered! err:%v", err.Error())
-		Logger.Errorf("[ClusterManager][removePods] failed, curReplica:%v newReplica:%v, error: %v", *c.CloneSet.Spec.Replicas, *newReplicas, err.Error())
+		Logger.Errorf("[ClusterManager][removePods] failed, curReplica:%v newReplica:%v, error: %v", oldRelica, *newReplicas, err.Error())
 		if c.handleCloneSetApiError(err, "ClusterManager.removePods") {
 			if retryCnt > 0 {
 				c.muOfCloneSet.Unlock()
@@ -868,7 +869,7 @@ func (c *ClusterManager) removePods(pods2del []string, retryCnt int) (*v1alpha1.
 		c.CloneSet = ret.DeepCopy()
 		ret.Spec.ScaleStrategy.PodsToDelete = nil // reset field Spec.ScaleStrategy.PodsToDelete
 		c.muOfCloneSet.Unlock()
-		Logger.Infof("[ClusterManager][removePods] removePods, curReplica:%v newReplica:%v, pods2del: %+v", *c.CloneSet.Spec.Replicas, *newReplicas, pods2del)
+		Logger.Infof("[ClusterManager][removePods] removePods, curReplica:%v newReplica:%v, pods2del: %+v", oldRelica, *newReplicas, pods2del)
 		return ret, nil
 	}
 }
