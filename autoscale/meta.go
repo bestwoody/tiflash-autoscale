@@ -153,15 +153,15 @@ func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta, atSta
 		}
 		return resp, err
 	} else {
-		Logger.Errorf("[PodDesc][GetCurrentTenant]trylock failed, pod:%v", podDesc.Name)
+		Logger.Warnf("[PodDesc][GetCurrentTenant]trylock failed, pod:%v", podDesc.Name)
 		return nil, fmt.Errorf("trylock failed")
 	}
 }
 
-type TenantConf struct { // TODO use it
-	tidbStatusAddr string
-	pdAddr         string
-}
+// type TenantConf struct { // TODO use it
+// 	tidbStatusAddr string
+// 	pdAddr         string
+// }
 
 type TenantDesc struct {
 	Name     string
@@ -739,7 +739,7 @@ func (c *AutoScaleMeta) loadTenants4Test() {
 	c.setupManualPauseMockTenant("t7", 1, 4, false, 60, NewCpuScaleRule(20, 80, "t7"))
 	c.setupAutoPauseMockTenant("t8", 1, 4, false, 60, 120, NewCpuScaleRule(40, 80, "t8"), TenantStatePaused)
 	c.setupAutoPauseMockTenant("t9", 1, 4, false, 60, 60, NewCpuScaleRule(40, 80, "t9"), TenantStateResumed)
-	c.setupAutoPauseMockTenant("t10", 1, 4, false, 300, 60, NewCpuScaleRule(40, 80, "t10"), TenantStatePaused)
+	c.setupAutoPauseMockTenant("t10", 1, 4, false, 1800, 60, NewCpuScaleRule(40, 80, "t10"), TenantStatePaused)
 	c.setupAutoPauseMockTenant("t11", 1, 4, false, 300, 120, NewCpuScaleRule(40, 80, "t11"), TenantStateResumed)
 
 	/// TODO load tenants from config of control panel

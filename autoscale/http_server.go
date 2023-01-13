@@ -62,6 +62,13 @@ func (ret *ResumeAndGetTopologyResult) WriteResp(hasErr int, state string, errIn
 	return retJson
 }
 
+func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	Logger.Infof("[HTTP]SharedFixedPool")
+	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
+	io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", []string{"serverless-cluster-tiflash-cn-peer.tidb-serverless.svc:3930"})))
+}
+
 func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	tenantName := req.FormValue("tidbclusterid")
@@ -216,6 +223,7 @@ func RunAutoscaleHttpServer() {
 	http.HandleFunc("/getstate", GetStateServer)
 	http.HandleFunc("/metrics", GetMetricsFromNode)
 	http.HandleFunc("/resume-and-get-topology", HttpHandleResumeAndGetTopology)
+	http.HandleFunc("/sharedfixpool", SharedFixedPool)
 	http.HandleFunc("/dumpmeta", DumpMeta)
 
 	Logger.Infof("[HTTP]ListenAndServe 8081")
