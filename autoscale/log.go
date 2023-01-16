@@ -5,12 +5,26 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var RawLogger *zap.Logger
 var Logger *zap.SugaredLogger
 
 const SettingLogLevel = zap.DebugLevel
+
+func openSinks() (zapcore.WriteSyncer, zapcore.WriteSyncer, error) {
+	sink, closeOut, err := zap.Open("stderr")
+	if err != nil {
+		return nil, nil, err
+	}
+	errSink, _, err := zap.Open("stderr")
+	if err != nil {
+		closeOut()
+		return nil, nil, err
+	}
+	return sink, errSink, nil
+}
 
 func InitZapLogger() {
 	if Logger != nil {
@@ -28,35 +42,54 @@ func InitZapLogger() {
 		enc.AppendString("[" + caller.TrimmedPath() + "]")
 	}
 
-	RawLogger, err := zap.Config{
-		Level:       zap.NewAtomicLevelAt(SettingLogLevel),
-		Development: false,
-		Sampling: &zap.SamplingConfig{
-			Initial:    100,
-			Thereafter: 100,
-		},
-		Encoding: "console",
-		EncoderConfig: zapcore.EncoderConfig{
-			TimeKey:          "ts",
-			LevelKey:         "level",
-			NameKey:          "logger",
-			CallerKey:        "caller",
-			FunctionKey:      zapcore.OmitKey,
-			MessageKey:       "msg",
-			StacktraceKey:    "stacktrace",
-			ConsoleSeparator: " ",
-			LineEnding:       zapcore.DefaultLineEnding,
-			EncodeLevel:      customLevelEncoder,
-			EncodeTime:       customTimeEncoder,
-			EncodeDuration:   zapcore.SecondsDurationEncoder,
-			EncodeCaller:     customCallerEncoder,
-		},
-		OutputPaths:      []string{"stderr", "/var/log/autoscale.log"},
-		ErrorOutputPaths: []string{"stderr", "/var/log/autoscale_err.log"},
-	}.Build()
+	w := zapcore.AddSync(&lumberjack.Logger{
+		Filename:   "/var/log/autoscale.log",
+		MaxSize:    500, // megabytes
+		MaxBackups: 10,
+		MaxAge:     28, // days
+	})
+	// encoding := "console"
+	encoderConfig := zapcore.EncoderConfig{
+		TimeKey:          "ts",
+		LevelKey:         "level",
+		NameKey:          "logger",
+		CallerKey:        "caller",
+		FunctionKey:      zapcore.OmitKey,
+		MessageKey:       "msg",
+		StacktraceKey:    "stacktrace",
+		ConsoleSeparator: " ",
+		LineEnding:       zapcore.DefaultLineEnding,
+		EncodeLevel:      customLevelEncoder,
+		EncodeTime:       customTimeEncoder,
+		EncodeDuration:   zapcore.SecondsDurationEncoder,
+		EncodeCaller:     customCallerEncoder,
+	}
+
+	// RawLogger, err := zap.Config{
+	// 	Level:       zap.NewAtomicLevelAt(SettingLogLevel),
+	// 	Development: false,
+	// 	Sampling: &zap.SamplingConfig{
+	// 		Initial:    100,
+	// 		Thereafter: 100,
+	// 	},
+	// 	Encoding:         encoding,
+	// 	EncoderConfig:    encoderConfig,
+	// 	OutputPaths:      []string{"stderr", "/var/log/autoscale.log"},
+	// 	ErrorOutputPaths: []string{"stderr", "/var/log/autoscale_err.log"},
+	// }.Build()
+	sink, errSink, err := openSinks()
 	if err != nil {
 		panic(err)
 	}
+
+	RawLogger = zap.New(zapcore.NewCore(
+		zapcore.NewConsoleEncoder(encoderConfig),
+		zapcore.NewMultiWriteSyncer(w, sink, errSink),
+		SettingLogLevel,
+	))
+	// if err != nil {
+	// 	panic(err)
+	// }
 	Logger = RawLogger.Sugar()
 }
 
