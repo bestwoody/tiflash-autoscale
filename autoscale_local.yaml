@@ -54,11 +54,11 @@ spec:
       containers:
       - name: autoscale
         image: bestwoody/k8stest:1
-        resources:
-          limits:
-            cpu: "1"
-          requests:
-            cpu: "0.5"
+        # resources:
+        #   limits:
+        #     cpu: "1"
+        #   requests:
+        #     cpu: "0.5"
         imagePullPolicy: Always
         env:
         - name: MY_NODE_NAME

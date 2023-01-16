@@ -384,11 +384,12 @@ func SupClient(podIP string, tenantName string) {
 }
 
 const (
-	EnvKeyPdAddr         = "PD_ADDR"
-	EnvKeyTidbStatusAddr = "TIDB_STATUS_ADDR"
-	EnvKeyKubeRunMode    = "TIFLASH_AS_KUBE_RUN_MODE"
-	EnvKeyEnableSns      = "TIFLASH_AS_ENABLE_SNS"
-	EnvKeyRegion         = "TIFLASH_AS_REGION"
+	EnvKeyPdAddr          = "PD_ADDR"
+	EnvKeyTidbStatusAddr  = "TIDB_STATUS_ADDR"
+	EnvKeyKubeRunMode     = "TIFLASH_AS_KUBE_RUN_MODE"
+	EnvKeyEnableSns       = "TIFLASH_AS_ENABLE_SNS"
+	EnvKeyRegion          = "TIFLASH_AS_REGION"
+	EnvKeySupervisorImage = "TIFLASH_SUPERVISOR_IMAGE"
 	// EnvKeyPrewarmPoolCap = "PREWARM_POOL_CAP"
 )
 
@@ -412,10 +413,13 @@ func main() {
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyKubeRunMode, os.Getenv(EnvKeyKubeRunMode))
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyEnableSns, os.Getenv(EnvKeyEnableSns))
 	autoscale.Logger.Infof("env.%v: %v", EnvKeyRegion, os.Getenv(EnvKeyRegion))
+	autoscale.Logger.Infof("env.%v: %v", EnvKeySupervisorImage, os.Getenv(EnvKeySupervisorImage))
+
 	// autoscale.Logger.Infof("env.%v: %v", EnvKeyPrewarmPoolCap, os.Getenv(EnvKeyPrewarmPoolCap))
 
 	autoscale.HardCodeEnvPdAddr = os.Getenv(EnvKeyPdAddr)
 	autoscale.HardCodeEnvTidbStatusAddr = os.Getenv(EnvKeyTidbStatusAddr)
+	autoscale.HardCodeSupervisorImage = os.Getenv(EnvKeySupervisorImage)
 	envKubeRunMode := os.Getenv(EnvKeyKubeRunMode)
 	if envKubeRunMode == "local" {
 		autoscale.OptionRunMode = autoscale.RunModeLocal

@@ -51,8 +51,8 @@ func InitZapLogger() {
 			EncodeDuration:   zapcore.SecondsDurationEncoder,
 			EncodeCaller:     customCallerEncoder,
 		},
-		OutputPaths:      []string{"stderr"},
-		ErrorOutputPaths: []string{"stderr"},
+		OutputPaths:      []string{"stderr", "/var/log/autoscale.log"},
+		ErrorOutputPaths: []string{"stderr", "/var/log/autoscale_err.log"},
 	}.Build()
 	if err != nil {
 		panic(err)

@@ -31,6 +31,20 @@ const (
 	RunModeCustom
 )
 
+func GetSupervisorDockerImager() string {
+	if HardCodeSupervisorImage != "" {
+		return HardCodeSupervisorImage
+	} else {
+		// if OptionRunMode == RunModeServeless {
+		// 	return "bestwoody/supervisor:serverless.v1.0"
+		// } else if OptionRunMode == RunModeLocal {
+		return "bestwoody/supervisor:1"
+		// } else { // TODO
+		// 	return "bestwoody/supervisor:1"
+		// }
+	}
+}
+
 const AutoScaleNamespace = "tiflash-autoscale"
 const ReadNodeCloneSetName = "readnode"
 
@@ -645,7 +659,7 @@ func (c *ClusterManager) initK8sComponents() {
 								},
 								Name: "supervisor",
 								// docker image
-								Image:           "bestwoody/supervisor:1",
+								Image:           GetSupervisorDockerImager(),
 								ImagePullPolicy: "Always",
 								// VolumeMounts: []v1.VolumeMount{
 								// 	{

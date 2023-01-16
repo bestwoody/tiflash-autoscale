@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tiflash-autoscale-lb
+  namespace: tiflash-autoscale
+  labels:
+    name: tiflash-autoscale-lb
+spec:
+  ports:
+  - name: tiflash-autoscale-lb
+    protocol: TCP
+    port: 8081
+    targetPort: 8081
+  selector:
+    app: autoscale
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: tiflash-autoscale
+  name: autoscale
+  labels:
+    app: autoscale
+spec:
+  ports:
+  - port: 80
+    name: web
+  clusterIP: None
+  selector:
+    app: autoscale
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: tiflash-autoscale
+  name: autoscale
+spec:
+  selector:
+    matchLabels:
+      app: autoscale # has to match .spec.template.metadata.labels
+  serviceName: "autoscale"
+  replicas: 1 # by default is 1
+  minReadySeconds: 1 # by default is 0
+  template:
+    metadata:
+      labels:
+        app: autoscale # has to match .spec.selector.matchLabels
+    spec:
+      nodeSelector:
+        tiflash.used-for-autoscale: "true"
+        # node.kubernetes.io/instance-type: t3.xlarge # use instance type to split components(autoscaler,supervisor) between different nodes
+      # affinity:
+      #   podAntiAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #     - labelSelector:
+      #         matchExpressions:
+      #         - key: app
+      #           operator: In
+      #           values:
+      #           - readnode
+      #       topologyKey: "kubernetes.io/hostname"
+      terminationGracePeriodSeconds: 1
+      containers:
+      - name: autoscale
+        image: bestwoody/tiflash-autoscaler:serverless.v1.0
+        command:
+        - "/autoscale"
+        args:
+        - "-warm-pool-cap=1"
+        - "-default-autopause-intervalsec=300"
+        # resources:
+        #   limits:
+        #     cpu: "1"
+        #   requests:
+        #     cpu: "0.5"
+        imagePullPolicy: Always
+        env:
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: TIFLASH_SUPERVISOR_IMAGE
+          value: "bestwoody/supervisor:serverless.v1.0"
+        - name: PD_ADDR
+          value: "serverless-cluster-pd.tidb-serverless.svc:2379"
+        - name: TIDB_STATUS_ADDR
+          value: ""
+        - name: TIFLASH_AS_KUBE_RUN_MODE
+          value: "serverless" #"local": minikube  serverless: serverless_tier dedicated:dedicated_tier
+        - name: TIFLASH_AS_ENABLE_SNS # whether to enable sns: default true, if enabled, TIFLASH_AS_REGION should be assgined
+          value: "false"
+        - name: TIFLASH_AS_REGION
+          value: "us-east-1"

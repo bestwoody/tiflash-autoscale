@@ -20,6 +20,7 @@ const (
 
 var HardCodeEnvTidbStatusAddr string
 var HardCodeEnvPdAddr string
+var HardCodeSupervisorImage string
 
 func AssignTenantHardCodeArgs(podIP string, tenantName string) (resp *supervisor.Result, err error) {
 	return AssignTenant(podIP, tenantName, HardCodeEnvTidbStatusAddr, HardCodeEnvPdAddr)
