@@ -5,7 +5,6 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var RawLogger *zap.Logger
@@ -42,12 +41,12 @@ func InitZapLogger() {
 		enc.AppendString("[" + caller.TrimmedPath() + "]")
 	}
 
-	w := zapcore.AddSync(&lumberjack.Logger{
-		Filename:   "/var/log/autoscale.log",
-		MaxSize:    500, // megabytes
-		MaxBackups: 10,
-		MaxAge:     28, // days
-	})
+	// w := zapcore.AddSync(&lumberjack.Logger{
+	// 	Filename:   "/var/log/autoscale.log",
+	// 	MaxSize:    500, // megabytes
+	// 	MaxBackups: 10,
+	// 	MaxAge:     28, // days
+	// })
 	// encoding := "console"
 	encoderConfig := zapcore.EncoderConfig{
 		TimeKey:          "ts",
@@ -65,31 +64,31 @@ func InitZapLogger() {
 		EncodeCaller:     customCallerEncoder,
 	}
 
-	// RawLogger, err := zap.Config{
-	// 	Level:       zap.NewAtomicLevelAt(SettingLogLevel),
-	// 	Development: false,
-	// 	Sampling: &zap.SamplingConfig{
-	// 		Initial:    100,
-	// 		Thereafter: 100,
-	// 	},
-	// 	Encoding:         encoding,
-	// 	EncoderConfig:    encoderConfig,
-	// 	OutputPaths:      []string{"stderr", "/var/log/autoscale.log"},
-	// 	ErrorOutputPaths: []string{"stderr", "/var/log/autoscale_err.log"},
-	// }.Build()
-	sink, errSink, err := openSinks()
-	if err != nil {
-		panic(err)
-	}
-
-	RawLogger = zap.New(zapcore.NewCore(
-		zapcore.NewConsoleEncoder(encoderConfig),
-		zapcore.NewMultiWriteSyncer(w, sink, errSink),
-		SettingLogLevel,
-	))
+	RawLogger, err := zap.Config{
+		Level:       zap.NewAtomicLevelAt(SettingLogLevel),
+		Development: false,
+		Sampling: &zap.SamplingConfig{
+			Initial:    100,
+			Thereafter: 100,
+		},
+		Encoding:         "console",
+		EncoderConfig:    encoderConfig,
+		OutputPaths:      []string{"stderr", "/var/log/autoscale.log"},
+		ErrorOutputPaths: []string{"stderr", "/var/log/autoscale_err.log"},
+	}.Build()
+	// sink, errSink, err := openSinks()
 	// if err != nil {
 	// 	panic(err)
 	// }
+
+	// RawLogger = zap.New(zapcore.NewCore(
+	// 	zapcore.NewConsoleEncoder(encoderConfig),
+	// 	zapcore.NewMultiWriteSyncer(w, sink, errSink),
+	// 	SettingLogLevel,
+	// ))
+	if err != nil {
+		panic(err)
+	}
 	Logger = RawLogger.Sugar()
 }
 

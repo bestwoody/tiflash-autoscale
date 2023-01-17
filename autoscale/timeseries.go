@@ -620,7 +620,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", metrics_topic!=\"\", pod!=\"\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
-	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", pod=~\"readnode.+\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
+	result, warnings, err := v1api.Query(ctx, "container_cpu_usage_seconds_total{job=\"kube_sd\", pod=~\"readnode.+\",container=\"supervisor\"}[1m]", time.Now(), v1.WithTimeout(5*time.Second))
 	if err != nil {
 		Logger.Errorf("[error][PromClient] querying Prometheus error: %v", err)
 		return nil, err
@@ -649,7 +649,7 @@ func (c *PromClient) QueryCpu() (map[string]*TimeValPair, error) {
 						time:  last.Timestamp.Unix(),
 						value: rate,
 					}
-					Logger.Infof("[Prom]query cpu, key: %v time: %v val: %v", podName, last.Timestamp.Unix(), rate)
+					Logger.Infof("[Prom]query cpu, key: %v time: %v delta: %v, time_range:%v~%v, val_range:%v~%v ", podName, last.Timestamp.Unix(), rate, nextToLast.Timestamp.Unix(), last.Timestamp.Unix(), nextToLast.Value, last.Value)
 				}
 
 			} else {

@@ -66,7 +66,7 @@ func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	Logger.Infof("[HTTP]SharedFixedPool")
 	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
-	io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", []string{"serverless-cluster-tiflash-cn-peer.tidb-serverless.svc:3930"})))
+	io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", []string{"serverless-cluster-tiflash-cn-0.serverless-cluster-tiflash-cn-peer.tidb-serverless.svc.cluster.local:3930"})))
 }
 
 func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
