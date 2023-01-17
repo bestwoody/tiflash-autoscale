@@ -40,7 +40,7 @@ spec:
       app: autoscale # has to match .spec.template.metadata.labels
   serviceName: "autoscale"
   replicas: 1 # by default is 1
-  minReadySeconds: 1 # by default is 0
+  #minReadySeconds: 1 # by default is 0  not supported in old ver of k8s
   template:
     metadata:
       labels:
@@ -65,8 +65,8 @@ spec:
         command:
         - "/autoscale"
         args:
-        - "-warm-pool-cap=1"
-        - "-default-autopause-intervalsec=300"
+        - "-warm-pool-cap=2"
+        - "-default-autopause-intervalsec=60"
         # resources:
         #   limits:
         #     cpu: "1"
