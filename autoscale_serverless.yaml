@@ -46,19 +46,18 @@ spec:
       labels:
         app: autoscale # has to match .spec.selector.matchLabels
     spec:
-      nodeSelector:
-        tiflash.used-for-autoscale: "true"
+      # nodeSelector:
+        # tiflash.used-for-autoscale: "true"
         # node.kubernetes.io/instance-type: t3.xlarge # use instance type to split components(autoscaler,supervisor) between different nodes
-      # affinity:
-      #   podAntiAffinity:
-      #     requiredDuringSchedulingIgnoredDuringExecution:
-      #     - labelSelector:
-      #         matchExpressions:
-      #         - key: app
-      #           operator: In
-      #           values:
-      #           - readnode
-      #       topologyKey: "kubernetes.io/hostname"
+      affinity:
+        nodeAffinity:  ##serverless speical!!!
+          requiredDuringSchedulingIgnoredDuringExecution: ##serverless speical!!!
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: tiflash.used-for-compute
+                operator: NotIn
+                values:
+                - "true"
       terminationGracePeriodSeconds: 1
       containers:
       - name: autoscale

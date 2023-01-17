@@ -122,6 +122,15 @@ spec:
       labels:
         app: as-prometheus
     spec:
+      affinity:
+        nodeAffinity:  ##serverless speical!!!
+          requiredDuringSchedulingIgnoredDuringExecution: ##serverless speical!!!
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: tiflash.used-for-compute
+                operator: NotIn
+                values:
+                - "true"
       containers:
       - name: prometheus
         image: prom/prometheus:v2.40.7
