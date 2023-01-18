@@ -445,6 +445,8 @@ func main() {
 	flag.IntVar(&autoscale.DefaultAutoPauseIntervalSeconds, "default-autopause-intervalsec", autoscale.DefaultAutoPauseIntervalSeconds, "DefaultAutoPauseIntervalSeconds")
 	flag.IntVar(&autoscale.DefaultScaleIntervalSeconds, "default-autoscale-intervalsec", autoscale.DefaultScaleIntervalSeconds, "DefaultScaleIntervalSeconds")
 	flag.IntVar(&autoscale.HardCodeMaxScaleIntervalSecOfCfg, "maxscale-intervalsec-of-cfg", autoscale.HardCodeMaxScaleIntervalSecOfCfg, "HardCodeMaxScaleIntervalSecOfCfg")
+	flag.StringVar(&autoscale.ReadNodeLogUploadS3Bucket, "s3-bucket-for-readnode-log", autoscale.ReadNodeLogUploadS3Bucket, "ReadNodeUpdateS3Bucket")
+	flag.BoolVar(&autoscale.UseSpecialTenantAsFixPool, "use-special-tenant-as-fixpool", autoscale.UseSpecialTenantAsFixPool, "UseSpecialTenantAsFixPool")
 
 	flag.Parse()
 

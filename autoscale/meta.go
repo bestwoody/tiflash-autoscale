@@ -43,7 +43,11 @@ var (
 	DefaultScaleIntervalSeconds      = 60
 	HardCodeMaxScaleIntervalSecOfCfg = 3600
 	MaxUnassignWaitTimeSec           = 60
+	ReadNodeLogUploadS3Bucket        = ""
+	UseSpecialTenantAsFixPool        = false
 )
+
+const SpecialTenantNameForFixPool = "fixpool"
 
 var PrewarmPoolCap = DefaultPrewarmPoolCap
 
@@ -659,6 +663,9 @@ func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
 		PodDescMap:  make(map[string]*PodDesc),
 		PrewarmPool: NewPrewarmPool(NewAutoPauseTenantDescWithState("", 0, PrewarmPoolCap, TenantStateResumed)),
 		k8sCli:      client,
+	}
+	if UseSpecialTenantAsFixPool {
+		ret.setupManualPauseMockTenant(SpecialTenantNameForFixPool, 1, 1, false, 3600, nil)
 	}
 	if OptionRunMode == RunModeLocal {
 		ret.loadTenants4Test()

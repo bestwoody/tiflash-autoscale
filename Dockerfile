@@ -1,4 +1,4 @@
-FROM golang:1.19-alpine as builder
+FROM --platform=$BUILDPLATFORM golang:1.19-alpine as builder
 
 RUN apk add --no-cache \
     make \
@@ -27,7 +27,7 @@ COPY . .
 # RUN make
 RUN GOOS=linux go build -o ./autoscale/k8splayground  tools/tiflash-autoscale/k8splayground.go 
 
-FROM alpine:3.5
+FROM --platform=$BUILDPLATFORM alpine:3.5
 
 COPY --from=builder /go/src/github.com/tikv/pd/autoscale/k8splayground /autoscale
 

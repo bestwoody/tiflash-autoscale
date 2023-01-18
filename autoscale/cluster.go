@@ -635,6 +635,7 @@ func (c *ClusterManager) initK8sComponents() {
 						Affinity: &v1.Affinity{
 							PodAntiAffinity: c.getComputePodAntiAffinity(),
 						},
+						ServiceAccountName: "default",
 						// container
 						Containers: []v1.Container{
 							{
@@ -655,6 +656,10 @@ func (c *ClusterManager) initK8sComponents() {
 												FieldPath: "metadata.name",
 											},
 										},
+									},
+									{
+										Name:  "S3_FOR_TIFLASH_LOG",
+										Value: ReadNodeLogUploadS3Bucket,
 									},
 								},
 								Name: "supervisor",

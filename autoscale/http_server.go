@@ -66,12 +66,15 @@ func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	Logger.Infof("[HTTP]SharedFixedPool")
 	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
-	io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", []string{"serverless-cluster-tiflash-cn-0.serverless-cluster-tiflash-cn-peer.tidb-serverless.svc.cluster.local:3930"})))
+	if UseSpecialTenantAsFixPool {
+		io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", Cm4Http.AutoScaleMeta.GetTopology(SpecialTenantNameForFixPool))))
+	} else {
+
+		io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", []string{"serverless-cluster-tiflash-cn-0.serverless-cluster-tiflash-cn-peer.tidb-serverless.svc.cluster.local:3930"})))
+	}
 }
 
-func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	tenantName := req.FormValue("tidbclusterid")
+func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
 	if tenantName == "" {
 		io.WriteString(w, string(ret.WriteResp(1, "unknown", "invalid tidbclusterid", nil)))
@@ -105,6 +108,12 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	} else {
 		io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "unnecessary to resume, ComputePool state is not paused", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
 	}
+}
+
+func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	tenantName := req.FormValue("tidbclusterid")
+	ResumeAndGetTopology(w, tenantName)
 }
 
 func DumpMeta(w http.ResponseWriter, req *http.Request) {
@@ -223,7 +232,7 @@ func RunAutoscaleHttpServer() {
 	http.HandleFunc("/getstate", GetStateServer)
 	http.HandleFunc("/metrics", GetMetricsFromNode)
 	http.HandleFunc("/resume-and-get-topology", HttpHandleResumeAndGetTopology)
-	http.HandleFunc("/sharedfixpool", SharedFixedPool)
+	http.HandleFunc("/sharedfixedpool", SharedFixedPool)
 	http.HandleFunc("/dumpmeta", DumpMeta)
 
 	Logger.Infof("[HTTP]ListenAndServe 8081")

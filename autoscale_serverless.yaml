@@ -61,12 +61,17 @@ spec:
       terminationGracePeriodSeconds: 1
       containers:
       - name: autoscale
-        image: bestwoody/tiflash-autoscaler:serverless.v1.0
+        image: bestwoody/tiflash-autoscaler:serverless.v6.4.0
         command:
         - "/autoscale"
         args:
         - "-warm-pool-cap=2"
+        - "-default-lowerlimit=0.4"
+        - "-default-upperlimit=0.8"
         - "-default-autopause-intervalsec=60"
+        - "-default-autoscale-intervalsec=60"
+        - "-default-min-pods=1"
+        - "-default-max-pods=4"
         # resources:
         #   limits:
         #     cpu: "1"
@@ -91,13 +96,13 @@ spec:
             fieldRef:
               fieldPath: status.podIP
         - name: TIFLASH_SUPERVISOR_IMAGE
-          value: "bestwoody/supervisor:serverless.v1.0"
+          value: "bestwoody/supervisor:serverless.v6.4.0"
         - name: PD_ADDR
           value: "serverless-cluster-pd.tidb-serverless.svc:2379"
         - name: TIDB_STATUS_ADDR
           value: ""
         - name: TIFLASH_AS_KUBE_RUN_MODE
-          value: "serverless" #"local": minikube  serverless: serverless_tier dedicated:dedicated_tier
+          value: "serverless" # "local": minikube | serverless: serverless_tier | dedicated:dedicated_tier
         - name: TIFLASH_AS_ENABLE_SNS # whether to enable sns: default true, if enabled, TIFLASH_AS_REGION should be assgined
           value: "false"
         - name: TIFLASH_AS_REGION
