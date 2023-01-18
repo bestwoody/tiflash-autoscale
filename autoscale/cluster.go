@@ -587,6 +587,21 @@ func (c *ClusterManager) getComputePodAntiAffinity() *v1.PodAntiAffinity {
 	}
 }
 
+func (c *ClusterManager) getComputePodToleration() []v1.Toleration {
+	if OptionRunMode == RunModeServeless {
+		return []v1.Toleration{
+			{
+				Key:      "tiflash.used-for-compute",
+				Value:    "true",
+				Operator: v1.TolerationOpEqual,
+				Effect:   v1.TaintEffectNoSchedule,
+			},
+		}
+	} else {
+		return nil
+	}
+}
+
 // checked
 // TODO pod storage volume
 func (c *ClusterManager) initK8sComponents() {
@@ -632,6 +647,7 @@ func (c *ClusterManager) initK8sComponents() {
 							"tiflash.used-for-compute": "true",
 							// "node.kubernetes.io/instance-type": "m6a.2xlarge", // TODO use a non-hack way to bind readnode pod to specific nodes
 						},
+						Tolerations: c.getComputePodToleration(),
 						Affinity: &v1.Affinity{
 							PodAntiAffinity: c.getComputePodAntiAffinity(),
 						},
