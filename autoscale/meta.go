@@ -990,6 +990,22 @@ func (c *AutoScaleMeta) addPreWarmFromPending(podName string, desc *PodDesc) {
 // 	Logger.Errorf("[AutoScaleMeta]pod ip changed! pod:%v")
 // }
 
+func (c *AutoScaleMeta) TryToRemoveExpriedPod(podSet map[string]bool) {
+	pods2del := make([]string, 0, 5)
+	c.mu.Lock()
+	for k, _ := range c.PodDescMap {
+		_, ok := podSet[k]
+		if !ok {
+			pods2del = append(pods2del, k)
+		}
+	}
+	c.mu.Unlock()
+	for _, v := range pods2del {
+		c.HandleK8sDelPodEvent(v)
+	}
+	Logger.Infof("[AutoScaleMeta][TryToRemoveExpriedPod]remove pods:%+v", pods2del)
+}
+
 // checked
 // update pods when loadpods when boot and delta events during runtime
 // Used by controller
@@ -1030,7 +1046,7 @@ func (c *AutoScaleMeta) UpdatePod(pod *v1.Pod) {
 						podDesc.IP = pod.Status.PodIP
 						Logger.Errorf("[UpdatePod]pod ip changed! Pod %v: %v -> %v", name, podDesc.IP, pod.Status.PodIP)
 					} else {
-						Logger.Infof("[UpdatePod]keep Pod %v", name)
+						Logger.Debugf("[UpdatePod]keep Pod %v", name)
 					}
 				}
 			}
@@ -1393,8 +1409,8 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 }
 
 // checked
-func (c *AutoScaleMeta) HandleK8sDelPodEvent(pod *v1.Pod) bool {
-	name := pod.Name
+func (c *AutoScaleMeta) HandleK8sDelPodEvent(name string) bool {
+	// name := pod.Name
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v, ok := c.PodDescMap[name]

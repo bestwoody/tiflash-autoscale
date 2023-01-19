@@ -502,7 +502,10 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 			})
 
 		if err != nil {
-			panic(err.Error())
+			Logger.Errorf("[watchPodsLoop]watch failed! err:%v", err.Error())
+			time.Sleep(1 * time.Second)
+			continue
+			// panic(err.Error())
 		}
 
 		c.watchMu.Lock()
@@ -517,6 +520,7 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 			if !more {
 				Logger.Infof("[watchPodsLoop]watchPods channel closed")
 				time.Sleep(1 * time.Second)
+				resourceVersion = c.loadPods()
 				break
 			}
 			pod, ok := e.Object.(*v1.Pod)
@@ -533,7 +537,7 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 			case watch.Modified:
 				c.AutoScaleMeta.UpdatePod(pod)
 			case watch.Deleted:
-				c.AutoScaleMeta.HandleK8sDelPodEvent(pod)
+				c.AutoScaleMeta.HandleK8sDelPodEvent(pod.Name)
 			case watch.Error:
 				Logger.Error("[watchPodsLoop]watch.Error:%v", pod)
 			default:
@@ -548,7 +552,7 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 }
 
 // checked
-func (c *ClusterManager) loadPodsAtStartup() string {
+func (c *ClusterManager) loadPods() string {
 	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": c.CloneSetName}}
 	pods, err := c.K8sCli.CoreV1().Pods(c.Namespace).List(context.TODO(),
 		metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()})
@@ -558,9 +562,12 @@ func (c *ClusterManager) loadPodsAtStartup() string {
 		// return ""
 	}
 	resVer := pods.ListMeta.ResourceVersion
+	podSet := make(map[string]bool)
 	for _, pod := range pods.Items {
+		podSet[pod.Name] = true
 		c.AutoScaleMeta.UpdatePod(&pod)
 	}
+	c.AutoScaleMeta.TryToRemoveExpriedPod(podSet)
 	return resVer
 }
 
@@ -726,7 +733,7 @@ func (c *ClusterManager) initK8sComponents() {
 	}
 
 	// load k8s pods of cloneset
-	resVer := c.loadPodsAtStartup()
+	resVer := c.loadPods()
 
 	c.AutoScaleMeta.ScanStateOfPods(true)
 	c.AutoScaleMeta.IsRuntimeReady.Store(true)
