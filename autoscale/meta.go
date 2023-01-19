@@ -665,7 +665,7 @@ func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
 		k8sCli:      client,
 	}
 	if UseSpecialTenantAsFixPool {
-		ret.setupManualPauseMockTenant(SpecialTenantNameForFixPool, 1, 1, false, 3600, nil)
+		ret.setupManualPauseMockTenant(SpecialTenantNameForFixPool, 1, 1, false, 300, nil)
 	}
 	if OptionRunMode == RunModeLocal {
 		ret.loadTenants4Test()

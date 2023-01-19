@@ -515,7 +515,8 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 		for {
 			e, more := <-ch
 			if !more {
-				Logger.Infof("watchPods channel closed")
+				Logger.Infof("[watchPodsLoop]watchPods channel closed")
+				time.Sleep(1 * time.Second)
 				break
 			}
 			pod, ok := e.Object.(*v1.Pod)

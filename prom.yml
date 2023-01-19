@@ -24,6 +24,7 @@ data:
         relabel_configs:
         - source_labels:  ["__meta_kubernetes_node_label_tiflash_used_for_compute"]
           action: keep
+          regex: 'true'
         - action: labelmap
           regex: __meta_kubernetes_node_label_(.+)
         - target_label: __address__
@@ -46,6 +47,7 @@ data:
         relabel_configs:
         - source_labels:  ["__meta_kubernetes_node_label_tiflash_used_for_compute"]
           action: keep
+          regex: 'true'
         - action: labelmap
           regex: __meta_kubernetes_node_label_(.+)
         - target_label: __address__
