@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
@@ -55,6 +58,35 @@ var (
 	Cm4Http *ClusterManager
 )
 
+func getIP(r *http.Request) (string, error) {
+	ips := r.Header.Get("X-Forwarded-For")
+	splitIps := strings.Split(ips, ",")
+
+	if len(splitIps) > 0 {
+		// get last IP in list since ELB prepends other user defined IPs, meaning the last one is the actual client IP.
+		netIP := net.ParseIP(splitIps[len(splitIps)-1])
+		if netIP != nil {
+			return netIP.String(), nil
+		}
+	}
+
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return "", err
+	}
+
+	netIP := net.ParseIP(ip)
+	if netIP != nil {
+		ip := netIP.String()
+		if ip == "::1" {
+			return "127.0.0.1", nil
+		}
+		return ip, nil
+	}
+
+	return "", errors.New("IP not found")
+}
+
 func (ret *ResumeAndGetTopologyResult) WriteResp(hasErr int, state string, errInfo string, topo []string) []byte {
 	ret.HasError = hasErr
 	ret.State = state
@@ -67,7 +99,8 @@ func (ret *ResumeAndGetTopologyResult) WriteResp(hasErr int, state string, errIn
 
 func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	Logger.Infof("[HTTP]SharedFixedPool")
+	ip, _ := getIP(req)
+	Logger.Infof("[HTTP]SharedFixedPool, client: %v", ip)
 	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
 	if UseSpecialTenantAsFixPool {
 		io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", Cm4Http.AutoScaleMeta.GetTopology(SpecialTenantNameForFixPool))))
@@ -100,19 +133,24 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 		}
 	}
 	// state := req.FormValue("state")
-	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v", tenantName)
+
 	// if currentState == TenantStatePaused {
 	flag = Cm4Http.Resume(tenantName)
 	_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 
 	// wait util topology is not empty or timeout
 	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 {
+		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed but topology is not ready, begin to wait at most %vs", HttpResumeWaitTimoueSec)
 		waitSt := time.Now()
 		for time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
 			// for time.Now().UnixMilli()-waitSt.UnixMilli() < 15*1000 {
 			time.Sleep(time.Duration(HttpResumeCheckIntervalMs) * time.Millisecond)
 			flag = Cm4Http.Resume(tenantName)
 		}
+	}
+
+	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 {
+		Logger.Errorf("[HTTP]ResumeAndGetTopology, wait topology ready timeout: %vs!! ", HttpResumeWaitTimoueSec)
 	}
 
 	if !flag {
@@ -129,8 +167,35 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 
 func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	ip, _ := getIP(req)
 	tenantName := req.FormValue("tidbclusterid")
+	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v, client: %v", tenantName, ip)
 	ResumeAndGetTopology(w, tenantName)
+}
+
+func HttpHandlePauseForTest(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	tenantName := req.FormValue("tidbclusterid")
+
+	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
+	if tenantName == "" {
+		io.WriteString(w, string(ret.WriteResp(1, "unknown", "invalid tidbclusterid", nil)))
+		return
+	}
+
+	// state := req.FormValue("state")
+	ip, _ := getIP(req)
+	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v, client: %v", tenantName, ip)
+	// if currentState == TenantStatePaused {
+	flag := Cm4Http.AsyncPause(tenantName)
+	_, currentState, _ := Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
+	if !flag {
+		io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "pause failed", nil)))
+		return
+	} else {
+		io.WriteString(w, string(ret.WriteResp(0, TenantState2String(currentState), "", nil)))
+		return
+	}
 }
 
 func DumpMeta(w http.ResponseWriter, req *http.Request) {
@@ -249,6 +314,7 @@ func RunAutoscaleHttpServer() {
 	http.HandleFunc("/getstate", GetStateServer)
 	http.HandleFunc("/metrics", GetMetricsFromNode)
 	http.HandleFunc("/resume-and-get-topology", HttpHandleResumeAndGetTopology)
+	http.HandleFunc("/pause4test", HttpHandlePauseForTest)
 	http.HandleFunc("/sharedfixedpool", SharedFixedPool)
 	http.HandleFunc("/dumpmeta", DumpMeta)
 

@@ -939,7 +939,9 @@ func (c *AutoScaleMeta) AsyncResume(tenant string, tsContainer *TimeSeriesContai
 		go c.addPodIntoTenant(v.GetInitCntOfPod(), tenant, tsContainer, true, resultChan)
 		return resultChan, true
 	} else {
-		Logger.Errorf("AutoScaleMeta] resume failed, tenant:%v state:%v", tenant, TenantState2String(v.GetState()))
+		if v.GetState() != TenantStateResumed && v.GetState() != TenantStateResuming {
+			Logger.Errorf("AutoScaleMeta] resume failed, tenant:%v state:%v", tenant, TenantState2String(v.GetState()))
+		}
 		return nil, false
 	}
 }
