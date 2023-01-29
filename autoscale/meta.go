@@ -44,10 +44,18 @@ var (
 	HardCodeMaxScaleIntervalSecOfCfg = 3600
 	MaxUnassignWaitTimeSec           = 60
 	ReadNodeLogUploadS3Bucket        = ""
-	UseSpecialTenantAsFixPool        = false
 )
 
-const SpecialTenantNameForFixPool = "fixpool"
+var (
+	UseSpecialTenantAsFixPool = false
+)
+
+const (
+	FixPoolNameSpace            = "tidb-serverless"
+	FixPoolRdName               = "serverless-cluster-tiflash-cn"
+	SpecialTenantNameForFixPool = "fixpool"
+	FixPoolDefaultReplica       = 1
+)
 
 var PrewarmPoolCap = DefaultPrewarmPoolCap
 

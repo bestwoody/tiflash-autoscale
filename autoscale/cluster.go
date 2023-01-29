@@ -90,9 +90,10 @@ type ClusterManager struct {
 	watcher       watch.Interface
 	muOfCloneSet  sync.Mutex
 
-	tsContainer    *TimeSeriesContainer
-	lstTsMap       map[string]int64 // TODO remove it
-	analyzeTaskMap sync.Map         //map[string]*AnalyzeTask
+	ExternalFixPoolReplica atomic.Int32 //info about fixpool used in dev tier,
+	tsContainer            *TimeSeriesContainer
+	lstTsMap               map[string]int64 // TODO remove it
+	analyzeTaskMap         sync.Map         //map[string]*AnalyzeTask
 }
 
 // cnt: want, create, get
@@ -725,6 +726,19 @@ func (c *ClusterManager) initK8sComponents() {
 	} else {
 		Logger.Infof("get clonneSet")
 		retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
+		expectedImage := GetSupervisorDockerImager()
+		if expectedImage != retCloneset.Spec.Template.Spec.Containers[0].Image {
+			Logger.Warnf("[initK8sComponents]image has changed! from: %v to %v", retCloneset.Spec.Template.Spec.Containers[0].Image, expectedImage)
+			err = CloneSetPatchImage(c.Cli, c.Namespace, c.CloneSetName, expectedImage)
+			if err != nil {
+				panic(err.Error())
+			}
+			Logger.Infof("[initK8sComponents]image update done. from: %v to %v", retCloneset.Spec.Template.Spec.Containers[0].Image, expectedImage)
+			retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
+		}
 	}
 	if err != nil {
 		panic(err.Error())
@@ -757,6 +771,42 @@ func (c *ClusterManager) scanPodsStatesLoop() {
 			return
 		}
 		c.AutoScaleMeta.ScanStateOfPods(false)
+	}
+}
+
+func (c *ClusterManager) checkFixPoolReplicaLoop() {
+	if OptionRunMode == RunModeServeless {
+		Logger.Infof("[loop]checkFixPoolReplicaLoop begin")
+		// defer Logger.Infof("[loop]checkFixPoolReplicaLoop end")
+		fst := true
+		c.wg.Add(1)
+		defer c.wg.Done()
+		periodSec := 60
+		for {
+			time.Sleep(time.Duration(periodSec) * time.Second)
+			if atomic.LoadInt32(&c.shutdown) != 0 {
+				return
+			}
+			specReplica, statusReplica, err := GetReplicaOfStatefulSet(c.K8sCli, FixPoolNameSpace, FixPoolRdName)
+
+			if err != nil {
+				Logger.Errorf("[checkFixPoolReplicaLoop]GetReplicaOfStatefulSet failed, err: %v", err.Error())
+			} else {
+				newReplica := specReplica
+				if statusReplica != 0 {
+					newReplica = MinInt(statusReplica, newReplica)
+				}
+				if fst {
+					Logger.Infof("[checkFixPoolReplicaLoop]get replica at first time, replica: %v, spec: %v status: %v", newReplica, specReplica, statusReplica)
+					fst = false
+				}
+				if newReplica >= 0 {
+					c.ExternalFixPoolReplica.Store(int32(newReplica))
+				} else {
+					Logger.Errorf("[checkFixPoolReplicaLoop]invalid new replica: %v", newReplica)
+				}
+			}
+		}
 	}
 }
 
@@ -817,10 +867,12 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 		tsContainer:   NewTimeSeriesContainer(promCli),
 		lstTsMap:      make(map[string]int64),
 
-		K8sCli:     K8sCli,
-		MetricsCli: MetricsCli,
-		Cli:        Cli,
+		K8sCli:                 K8sCli,
+		MetricsCli:             MetricsCli,
+		Cli:                    Cli,
+		ExternalFixPoolReplica: atomic.Int32{},
 	}
+	ret.ExternalFixPoolReplica.Store(FixPoolDefaultReplica)
 	ret.initK8sComponents()
 
 	ret.initRangeMetricsFromPromethues(HardCodeMaxScaleIntervalSecOfCfg)
@@ -829,6 +881,7 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 	go ret.manageAnalyzeTasks()
 	go ret.collectTaskCntMetricsFromPromethuesLoop()
 	go ret.scanPodsStatesLoop()
+	go ret.checkFixPoolReplicaLoop()
 
 	return ret
 }

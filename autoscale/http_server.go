@@ -69,8 +69,12 @@ func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
 	if UseSpecialTenantAsFixPool {
 		io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", Cm4Http.AutoScaleMeta.GetTopology(SpecialTenantNameForFixPool))))
 	} else {
-
-		io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", []string{"serverless-cluster-tiflash-cn-0.serverless-cluster-tiflash-cn-peer.tidb-serverless.svc.cluster.local:3930"})))
+		fixCNs := make([]string, 0, 2)
+		replica := int(Cm4Http.ExternalFixPoolReplica.Load())
+		for i := 0; i < replica; i++ {
+			fixCNs = append(fixCNs, fmt.Sprintf("serverless-cluster-tiflash-cn-%v.serverless-cluster-tiflash-cn-peer.tidb-serverless.svc.cluster.local:3930", i))
+		}
+		io.WriteString(w, string(ret.WriteResp(0, "fixpool", "", fixCNs)))
 	}
 }
 
