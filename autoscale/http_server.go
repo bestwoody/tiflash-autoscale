@@ -142,11 +142,12 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 {
 		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed but topology is not ready, begin to wait at most %vs", HttpResumeWaitTimoueSec)
 		waitSt := time.Now()
-		for time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
+		for len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 && time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
 			// for time.Now().UnixMilli()-waitSt.UnixMilli() < 15*1000 {
 			time.Sleep(time.Duration(HttpResumeCheckIntervalMs) * time.Millisecond)
 			flag = Cm4Http.Resume(tenantName)
 		}
+		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is ready, wait cost %vms", time.Since(waitSt).Milliseconds())
 	}
 
 	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 {

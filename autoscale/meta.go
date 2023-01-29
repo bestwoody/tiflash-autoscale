@@ -1201,8 +1201,8 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 	if tenantDesc == nil {
 		return -1
 	}
-	tenantDesc.ResizeMu.Lock()
-	defer tenantDesc.ResizeMu.Unlock()
+	// tenantDesc.ResizeMu.Lock()
+	// defer tenantDesc.ResizeMu.Unlock()
 	c.mu.Lock()
 
 	// check validation of state
@@ -1321,8 +1321,8 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 	if tenantDesc == nil {
 		return -1
 	}
-	tenantDesc.ResizeMu.Lock()
-	defer tenantDesc.ResizeMu.Unlock()
+	// tenantDesc.ResizeMu.Lock()
+	// defer tenantDesc.ResizeMu.Unlock()
 	c.mu.Lock() // tenantDesc.ResizeMu.Lock() always before c.mu.Lock(), to prevent dead lock between  tenantDesc.ResizeMu and c.mu.Lock()
 
 	// check validation of state
