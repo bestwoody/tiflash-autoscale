@@ -13,6 +13,23 @@ var Logger *zap.SugaredLogger
 
 const SettingLogLevel = zap.DebugLevel
 
+const (
+	LogModePod = iota
+	LogModeLocalTest
+)
+
+var LogMode = LogModePod
+
+func getLogPath() string {
+	// if LogMode == LogModePod {
+	return "/var/log/"
+	// } else if LogMode == LogModeLocalTest {
+	// return "./"
+	// } else {
+	// panic(fmt.Errorf("unknown LogMode:%v", LogMode))
+	// }
+}
+
 func openSinks() (zapcore.WriteSyncer, zapcore.WriteSyncer, error) {
 	sink, closeOut, err := zap.Open("stderr")
 	if err != nil {
@@ -41,9 +58,8 @@ func InitZapLogger() {
 	customCallerEncoder := func(caller zapcore.EntryCaller, enc zapcore.PrimitiveArrayEncoder) {
 		enc.AppendString("[" + caller.TrimmedPath() + "]")
 	}
-
 	w := zapcore.AddSync(&lumberjack.Logger{
-		Filename:   "/var/log/autoscale.log",
+		Filename:   getLogPath() + "autoscale.log",
 		MaxSize:    500, // megabytes
 		MaxBackups: 10,
 		MaxAge:     28, // days
@@ -64,7 +80,10 @@ func InitZapLogger() {
 		EncodeDuration:   zapcore.SecondsDurationEncoder,
 		EncodeCaller:     customCallerEncoder,
 	}
-
+	errorOutputPaths := []string{"stderr"}
+	if LogMode != LogModeLocalTest {
+		errorOutputPaths = []string{"stderr", getLogPath() + "autoscale_err.log"}
+	}
 	RawLogger, err := zap.Config{
 		Level:       zap.NewAtomicLevelAt(SettingLogLevel),
 		Development: false,
@@ -75,24 +94,26 @@ func InitZapLogger() {
 		Encoding:         "console",
 		EncoderConfig:    encoderConfig,
 		OutputPaths:      []string{"stderr"},
-		ErrorOutputPaths: []string{"stderr", "/var/log/autoscale_err.log"},
+		ErrorOutputPaths: errorOutputPaths,
 	}.Build()
 
 	// sink, errSink, err := openSinks()
 	if err != nil {
 		panic(err)
 	}
-	core := zapcore.NewTee(RawLogger.Core(), zapcore.NewCore(
-		zapcore.NewConsoleEncoder(encoderConfig),
-		w,
-		SettingLogLevel,
-	))
-	RawLogger = zap.New(core, zap.AddCaller())
+	if LogMode != LogModeLocalTest {
+		core := zapcore.NewTee(RawLogger.Core(), zapcore.NewCore(
+			zapcore.NewConsoleEncoder(encoderConfig),
+			w,
+			SettingLogLevel,
+		))
+		RawLogger = zap.New(core, zap.AddCaller())
+	}
 	// RawLogger = zap.New()
 
 	Logger = RawLogger.Sugar()
 }
 
-func init() {
-	InitZapLogger()
-}
+// func init() {
+// 	InitZapLogger()
+// }

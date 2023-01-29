@@ -10,10 +10,16 @@ func isInRangeInt(v int, min int, max int) bool {
 	return v >= min && v <= max
 }
 
+func InitTestEnv() {
+	LogMode = LogModeLocalTest
+	InitZapLogger()
+}
+
 func TestComputeBestCore(t *testing.T) {
+	InitTestEnv()
 	minPods := 1
 	maxPods := 4
-	tenantDesc := NewTenantDesc("test1", minPods, maxPods, TenantStateResumed)
+	tenantDesc := NewAutoPauseTenantDescWithState("test1", minPods, maxPods, TenantStateResumed)
 	tenantDesc.SetPod("p1", &PodDesc{Name: "p1"})
 	target, delta := ComputeBestPodsInRuleOfCompute(
 		tenantDesc, ComputeCpuUsageCoresPerPod(1.0), 0.6, 0.8)
@@ -151,6 +157,7 @@ func TestComputeBestCore(t *testing.T) {
 }
 
 func TestComputeBestCore2(t *testing.T) {
+	InitTestEnv()
 	// testComputeBestCoreCommon(t, 0.8, 0.2)
 	testComputeBestCoreCommon(t, 0.2, 0.8)
 	testComputeBestCoreCommon(t, 0.6, 0.8)
@@ -163,7 +170,7 @@ func testComputeBestCoreCommon(t *testing.T, minRatio float64, maxRatio float64)
 	maxPods := 4
 	// minRatio := float64(0.2)
 	// maxRatio := float64(0.8)
-	tenantDesc := NewTenantDesc("test1", minPods, maxPods, TenantStateResumed)
+	tenantDesc := NewAutoPauseTenantDescWithState("test1", minPods, maxPods, TenantStateResumed)
 	testUsagesArr := []float64{0.0, 0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999, 1.0}
 	cnt1 := 0
 	cnt2 := 0
