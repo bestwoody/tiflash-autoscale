@@ -42,8 +42,8 @@ func (c *MockTenantInfoProvider) GetTenantScaleIntervalSec(tenant string) (int, 
 	return 300, false
 }
 
-func (c *MockTenantInfoProvider) InsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int) bool /* is_success */ {
-	return c.tsContainer.InsertWithUserCfg(key, time, values, cfgIntervalSec)
+func (c *MockTenantInfoProvider) InsertWithUserCfg(key string, time int64, values []float64, cfgIntervalSec int, metricsTopic autoscale.MetricsTopic) bool /* is_success */ {
+	return c.tsContainer.InsertWithUserCfg(key, time, values, cfgIntervalSec, metricsTopic)
 	// Logger.Infof("insert %v %v %v %v", key, time, values, cfgIntervalSec)
 	// return true
 }

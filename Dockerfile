@@ -25,12 +25,12 @@ RUN GO111MODULE=on go mod download
 COPY . .
 
 # RUN make
-RUN GOOS=linux go build -o ./autoscale/k8splayground  tools/tiflash-autoscale/k8splayground.go 
+RUN GOOS=linux go build -o ./autoscale/autoscale  tools/tiflash-autoscale/main.go 
 
 # FROM alpine:3.5
 
 # COPY --from=builder /go/src/github.com/tikv/pd/autoscale/k8splayground /autoscale
-RUN cp /go/src/github.com/tikv/pd/autoscale/k8splayground /autoscale
+RUN cp /go/src/github.com/tikv/pd/autoscale/autoscale /autoscale
 
 EXPOSE 1-65535
 
