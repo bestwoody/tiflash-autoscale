@@ -405,7 +405,7 @@ func main() {
 	// configmapGetAndUpdateExample()
 	// configmapPlayGround()
 	// configmapPatchExample()
-	autoscale.LogMode = autoscale.LogModeLocalTest
+	autoscale.LogMode = autoscale.LogModePod
 	autoscale.InitZapLogger()
 	defer autoscale.Logger.Sync() // flushes buffer, if any
 
