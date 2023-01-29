@@ -16,6 +16,9 @@ import (
 	rest "k8s.io/client-go/rest"
 )
 
+var HttpResumeWaitTimoueSec = 15
+var HttpResumeCheckIntervalMs = 100
+
 type ResumeAndGetTopologyResult struct {
 	HasError  int      `json:"hasError"`
 	ErrorInfo string   `json:"errorInfo"`
@@ -98,20 +101,30 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 	}
 	// state := req.FormValue("state")
 	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v", tenantName)
-	if currentState == TenantStatePaused {
-		flag = Cm4Http.Resume(tenantName)
-		_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
+	// if currentState == TenantStatePaused {
+	flag = Cm4Http.Resume(tenantName)
+	_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 
-		if !flag {
-			io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "resume failed", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
-			return
-		} else {
-			io.WriteString(w, string(ret.WriteResp(0, TenantState2String(currentState), "", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
-			return
+	// wait util topology is not empty or timeout
+	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 {
+		waitSt := time.Now()
+		for time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
+			// for time.Now().UnixMilli()-waitSt.UnixMilli() < 15*1000 {
+			time.Sleep(time.Duration(HttpResumeCheckIntervalMs) * time.Millisecond)
+			flag = Cm4Http.Resume(tenantName)
 		}
-	} else {
-		io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "unnecessary to resume, ComputePool state is not paused", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
 	}
+
+	if !flag {
+		io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "resume failed", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+		return
+	} else {
+		io.WriteString(w, string(ret.WriteResp(0, TenantState2String(currentState), "", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+		return
+	}
+	// } else {
+	// 	io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "unnecessary to resume, ComputePool state is not paused", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+	// }
 }
 
 func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {

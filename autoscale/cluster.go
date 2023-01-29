@@ -481,9 +481,12 @@ func (c *ClusterManager) AsyncPause(tenant string) bool {
 }
 
 func (c *ClusterManager) Resume(tenant string) bool {
-	resultChan := make(chan int)
-	ret := c.AutoScaleMeta.AsyncResume(tenant, c.tsContainer, resultChan)
-	addPodsResult := <-resultChan
+	// resultChan := make(chan int)
+	resultChan, ret := c.AutoScaleMeta.AsyncResume(tenant, c.tsContainer)
+	addPodsResult := int(-1)
+	if resultChan != nil {
+		addPodsResult = <-resultChan
+	}
 	return ret && addPodsResult != -1
 }
 

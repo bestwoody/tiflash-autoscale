@@ -924,22 +924,23 @@ func (c *AutoScaleMeta) AsyncPause(tenant string, tsContainer *TimeSeriesContain
 	}
 }
 
-func (c *AutoScaleMeta) AsyncResume(tenant string, tsContainer *TimeSeriesContainer, resultChan chan<- int) bool {
+func (c *AutoScaleMeta) AsyncResume(tenant string, tsContainer *TimeSeriesContainer) (chan int, bool) {
 	// c.mu.Lock()
 	// defer c.mu.Unlock()
 	// v, ok := c.tenantMap[tenant]
 	v := c.GetTenantDesc(tenant)
 	if v == nil {
-		return false
+		return nil, false
 	}
 	if v.SyncStateResuming() {
 		Logger.Infof("[AutoScaleMeta][%v] Resuming %v", tenant, tenant)
 		// TODO ensure there is no pods now
+		resultChan := make(chan int)
 		go c.addPodIntoTenant(v.GetInitCntOfPod(), tenant, tsContainer, true, resultChan)
-		return true
+		return resultChan, true
 	} else {
 		Logger.Errorf("AutoScaleMeta] resume failed, tenant:%v state:%v", tenant, TenantState2String(v.GetState()))
-		return false
+		return nil, false
 	}
 }
 
@@ -1346,7 +1347,9 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 	exceptionCnt := 0
 	podsToUnassign := make([]*PodDesc, 0, removeCnt)
 	cnt, podsToUnassign = tenantDesc.PopPods(cnt, podsToUnassign)
-
+	if isPause {
+		tenantDesc.SyncStatePaused() // early sync paused state, in order to let user be able to resume early if he want
+	}
 	c.mu.Unlock()
 	for _, pod2unassign := range podsToUnassign {
 		Logger.Debugf("[AutoScaleMeta][resize][removePodFromTenant][%v] podsToUnassign(name, ip): %v %v", tenant, pod2unassign.Name, pod2unassign.IP)
@@ -1364,7 +1367,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 		defer v.isStateChanging.Store(false)
 		go func(v *PodDesc) {
 			defer apiWg.Done()
-			resp, err := v.UnassignTenantWithMockConf(tenant, isPause)
+			resp, err := v.UnassignTenantWithMockConf(tenant, false)
 			localMu.Lock()
 			defer localMu.Unlock()
 			if err != nil || resp.HasErr {
@@ -1404,9 +1407,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 		}
 		cnt++
 	}
-	if isPause {
-		tenantDesc.SyncStatePaused()
-	}
+
 	c.mu.Unlock()
 	if len(undoList) != 0 || exceptionCnt != 0 {
 		Logger.Warnf("[AutoScaleMeta][resize][removePodFromTenant][%v] exceptionCnt:%v len(undoList):%v", tenant, exceptionCnt, len(undoList))
