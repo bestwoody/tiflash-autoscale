@@ -935,7 +935,7 @@ func (c *ClusterManager) addNewPods(delta int32, retryCnt int) (*v1alpha1.CloneS
 	} else {
 		c.CloneSet = ret.DeepCopy()
 		c.muOfCloneSet.Unlock()
-		Logger.Infof("[ClusterManager][removePods] removePods, curReplica:%v newReplica:%v", oldRelica, *newReplicas)
+		Logger.Infof("[ClusterManager][addPods] addNewPods, curReplica:%v newReplica:%v", oldRelica, *newReplicas)
 		return ret, nil
 	}
 
