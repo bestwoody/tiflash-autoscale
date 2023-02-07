@@ -654,7 +654,13 @@ func (c *ClusterManager) initK8sComponents() {
 				Name: c.CloneSetName,
 				Labels: map[string]string{
 					"app": c.CloneSetName,
-				}},
+				},
+				Annotations: map[string]string{
+					"prometheus.io/path":   "/metrics",
+					"prometheus.io/port":   "8234",
+					"prometheus.io/scrape": "true",
+				},
+			},
 			Spec: v1alpha1.CloneSetSpec{
 				Replicas: Int32Ptr(int32(c.AutoScaleMeta.SoftLimit)),
 				Selector: &metav1.LabelSelector{
