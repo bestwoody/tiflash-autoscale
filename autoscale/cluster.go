@@ -631,7 +631,7 @@ func (c *ClusterManager) getComputePodToleration() []v1.Toleration {
 }
 
 func (c *ClusterManager) createCloneSet(cloneSet v1alpha1.CloneSet) (*v1alpha1.CloneSet, error) {
-	Logger.Infof("create clonneSet")
+	Logger.Infof("[initK8sComponents]create clonneSet")
 	c.AutoScaleMeta.PrewarmPool.cntOfPending.Add(*cloneSet.Spec.Replicas)
 	return c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Create(context.TODO(), &cloneSet, metav1.CreateOptions{})
 }
