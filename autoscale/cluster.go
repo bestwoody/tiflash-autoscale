@@ -31,6 +31,8 @@ const (
 	RunModeCustom
 )
 
+const AnnotationKeyOfSupervisorRDVersionn = "tiflash.autoscale.rdversion"
+
 func GetSupervisorDockerImager() string {
 	if HardCodeSupervisorImage != "" {
 		return HardCodeSupervisorImage
@@ -645,167 +647,212 @@ func (c *ClusterManager) initK8sComponents() {
 		}
 	}
 	var retCloneset *v1alpha1.CloneSet
+	desiredCloneSet := v1alpha1.CloneSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: c.CloneSetName,
+			Labels: map[string]string{
+				"app": c.CloneSetName,
+			},
+			Annotations: map[string]string{
+				"prometheus.io/path":                "/metrics",
+				"prometheus.io/port":                "8234",
+				"prometheus.io/scrape":              "true",
+				AnnotationKeyOfSupervisorRDVersionn: "1",
+			},
+		},
+		Spec: v1alpha1.CloneSetSpec{
+			Replicas: Int32Ptr(int32(c.AutoScaleMeta.SoftLimit)),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": c.CloneSetName,
+				}},
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": c.CloneSetName,
+					},
+				},
+				// pod anti affinity
+				Spec: v1.PodSpec{
+					NodeSelector: map[string]string{
+						"tiflash.used-for-compute": "true",
+						// "node.kubernetes.io/instance-type": "m6a.2xlarge", // TODO use a non-hack way to bind readnode pod to specific nodes
+					},
+					Tolerations: c.getComputePodToleration(),
+					Affinity: &v1.Affinity{
+						PodAntiAffinity: c.getComputePodAntiAffinity(),
+					},
+					ServiceAccountName: "default",
+					// container
+					Containers: []v1.Container{
+						{
+							// ENV
+							Env: []v1.EnvVar{
+								{
+									Name: "POD_IP",
+									ValueFrom: &v1.EnvVarSource{
+										FieldRef: &v1.ObjectFieldSelector{
+											FieldPath: "status.podIP",
+										},
+									},
+								},
+								{
+									Name: "POD_NAME",
+									ValueFrom: &v1.EnvVarSource{
+										FieldRef: &v1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+								{
+									Name:  "S3_FOR_TIFLASH_LOG",
+									Value: ReadNodeLogUploadS3Bucket,
+								},
+							},
+							Name: "supervisor",
+							// docker image
+							Image:           GetSupervisorDockerImager(),
+							ImagePullPolicy: "IfNotPresent",
+							VolumeMounts: []v1.VolumeMount{
+								{
+									Name:      "sharedtmpdisk",
+									MountPath: "/tiflash/log/",
+								}},
+						},
+						/*
+							- name: count-log-1
+								image: busybox:1.28
+								args: [/bin/sh, -c, 'tail -n+1 -F /var/log/1.log']
+								volumeMounts:
+								- name: varlog
+								  mountPath: /var/log */
+						{
+							Name:            "tiflash-log",
+							Image:           GetBusyBoxDockerImager(),
+							ImagePullPolicy: "IfNotPresent",
+							Args: []string{
+								"/bin/sh",
+								"-c",
+								"touch /tiflash/log/tiflash.log; tail -n0 -F /tiflash/log/tiflash.log;",
+							},
+							VolumeMounts: []v1.VolumeMount{
+								{
+									Name:      "sharedtmpdisk",
+									MountPath: "/tiflash/log/",
+								},
+							},
+						},
+						{
+							Name:            "tiflash-err-log",
+							Image:           GetBusyBoxDockerImager(),
+							ImagePullPolicy: "IfNotPresent",
+							Args: []string{
+								"/bin/sh",
+								"-c",
+								"touch /tiflash/log/tiflash_error.log; tail -n0 -F /tiflash/log/tiflash_error.log;",
+							},
+							VolumeMounts: []v1.VolumeMount{
+								{
+									Name:      "sharedtmpdisk",
+									MountPath: "/tiflash/log/",
+								},
+							},
+						},
+					},
+					Volumes: []v1.Volume{
+						{
+							Name: "sharedtmpdisk",
+							// EmptyDir: nil,
+						},
+					},
+				},
+			},
+			// VolumeClaimTemplates: []v1.PersistentVolumeClaim{
+			// 	{
+			// 		ObjectMeta: metav1.ObjectMeta{
+			// 			Name: volumeName,
+			// 		},
+			// 		Spec: v1.PersistentVolumeClaimSpec{
+			// 			AccessModes: []v1.PersistentVolumeAccessMode{
+			// 				"ReadWriteOnce",
+			// 			},
+			// 			Resources: v1.ResourceRequirements{
+			// 				Requests: v1.ResourceList{
+			// 					"storage": resource.MustParse("20Gi"),
+			// 				},
+			// 			},
+			// 		},
+			// 	},
+			// },
+		},
+	}
 	if !found {
 		// volumeName := "tiflash-readnode-data-vol"
 		/// TODO ensure one pod one node and fixed nodegroup
 		//create cloneSet since there is no desired cloneSet
-		cloneSet := v1alpha1.CloneSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: c.CloneSetName,
-				Labels: map[string]string{
-					"app": c.CloneSetName,
-				},
-				Annotations: map[string]string{
-					"prometheus.io/path":   "/metrics",
-					"prometheus.io/port":   "8234",
-					"prometheus.io/scrape": "true",
-				},
-			},
-			Spec: v1alpha1.CloneSetSpec{
-				Replicas: Int32Ptr(int32(c.AutoScaleMeta.SoftLimit)),
-				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"app": c.CloneSetName,
-					}},
-				Template: v1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							"app": c.CloneSetName,
-						},
-					},
-					// pod anti affinity
-					Spec: v1.PodSpec{
-						NodeSelector: map[string]string{
-							"tiflash.used-for-compute": "true",
-							// "node.kubernetes.io/instance-type": "m6a.2xlarge", // TODO use a non-hack way to bind readnode pod to specific nodes
-						},
-						Tolerations: c.getComputePodToleration(),
-						Affinity: &v1.Affinity{
-							PodAntiAffinity: c.getComputePodAntiAffinity(),
-						},
-						ServiceAccountName: "default",
-						// container
-						Containers: []v1.Container{
-							{
-								// ENV
-								Env: []v1.EnvVar{
-									{
-										Name: "POD_IP",
-										ValueFrom: &v1.EnvVarSource{
-											FieldRef: &v1.ObjectFieldSelector{
-												FieldPath: "status.podIP",
-											},
-										},
-									},
-									{
-										Name: "POD_NAME",
-										ValueFrom: &v1.EnvVarSource{
-											FieldRef: &v1.ObjectFieldSelector{
-												FieldPath: "metadata.name",
-											},
-										},
-									},
-									{
-										Name:  "S3_FOR_TIFLASH_LOG",
-										Value: ReadNodeLogUploadS3Bucket,
-									},
-								},
-								Name: "supervisor",
-								// docker image
-								Image:           GetSupervisorDockerImager(),
-								ImagePullPolicy: "IfNotPresent",
-								VolumeMounts: []v1.VolumeMount{
-									{
-										Name:      "sharedtmpdisk",
-										MountPath: "/tiflash/log/",
-									}},
-							},
-							/*
-								- name: count-log-1
-									image: busybox:1.28
-									args: [/bin/sh, -c, 'tail -n+1 -F /var/log/1.log']
-									volumeMounts:
-									- name: varlog
-									  mountPath: /var/log */
-							{
-								Name:            "tiflash-log",
-								Image:           GetBusyBoxDockerImager(),
-								ImagePullPolicy: "IfNotPresent",
-								Args: []string{
-									"/bin/sh",
-									"-c",
-									"touch /tiflash/log/tiflash.log; tail -n0 -F /tiflash/log/tiflash.log;",
-								},
-								VolumeMounts: []v1.VolumeMount{
-									{
-										Name:      "sharedtmpdisk",
-										MountPath: "/tiflash/log/",
-									},
-								},
-							},
-							{
-								Name:            "tiflash-err-log",
-								Image:           GetBusyBoxDockerImager(),
-								ImagePullPolicy: "IfNotPresent",
-								Args: []string{
-									"/bin/sh",
-									"-c",
-									"touch /tiflash/log/tiflash_error.log; tail -n0 -F /tiflash/log/tiflash_error.log;",
-								},
-								VolumeMounts: []v1.VolumeMount{
-									{
-										Name:      "sharedtmpdisk",
-										MountPath: "/tiflash/log/",
-									},
-								},
-							},
-						},
-						Volumes: []v1.Volume{
-							{
-								Name: "sharedtmpdisk",
-								// EmptyDir: nil,
-							},
-						},
-					},
-				},
-				// VolumeClaimTemplates: []v1.PersistentVolumeClaim{
-				// 	{
-				// 		ObjectMeta: metav1.ObjectMeta{
-				// 			Name: volumeName,
-				// 		},
-				// 		Spec: v1.PersistentVolumeClaimSpec{
-				// 			AccessModes: []v1.PersistentVolumeAccessMode{
-				// 				"ReadWriteOnce",
-				// 			},
-				// 			Resources: v1.ResourceRequirements{
-				// 				Requests: v1.ResourceList{
-				// 					"storage": resource.MustParse("20Gi"),
-				// 				},
-				// 			},
-				// 		},
-				// 	},
-				// },
-			},
-		}
+		cloneSet := desiredCloneSet
 		Logger.Infof("create clonneSet")
 		c.AutoScaleMeta.PrewarmPool.cntOfPending.Add(*cloneSet.Spec.Replicas)
 		retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Create(context.TODO(), &cloneSet, metav1.CreateOptions{})
 
 	} else {
+		isCloneSetNeedUpdate := false
 		Logger.Infof("get clonneSet")
 		retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
 		if err != nil {
 			panic(err.Error())
 		}
-		expectedImage := GetSupervisorDockerImager()
-		if expectedImage != retCloneset.Spec.Template.Spec.Containers[0].Image {
-			Logger.Warnf("[initK8sComponents]image has changed! from: %v to %v", retCloneset.Spec.Template.Spec.Containers[0].Image, expectedImage)
-			err = CloneSetPatchImage(c.Cli, c.Namespace, c.CloneSetName, expectedImage)
-			if err != nil {
-				panic(err.Error())
+		if retCloneset.ObjectMeta.Annotations != nil {
+			v, ok := retCloneset.ObjectMeta.Annotations[AnnotationKeyOfSupervisorRDVersionn]
+			if ok { // old annotation key exist
+				if desiredCloneSet.ObjectMeta.Annotations != nil {
+					v2, ok2 := desiredCloneSet.ObjectMeta.Annotations[AnnotationKeyOfSupervisorRDVersionn]
+					if ok2 {
+						if v2 != v {
+							isCloneSetNeedUpdate = true
+						}
+					}
+				}
+			} else { // old annotation key not exist
+				if desiredCloneSet.ObjectMeta.Annotations != nil {
+					_, ok2 := desiredCloneSet.ObjectMeta.Annotations[AnnotationKeyOfSupervisorRDVersionn]
+					if ok2 {
+						isCloneSetNeedUpdate = true
+					}
+				}
 			}
-			Logger.Infof("[initK8sComponents]image update done. from: %v to %v", retCloneset.Spec.Template.Spec.Containers[0].Image, expectedImage)
-			retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
+		} else { // old annotations not exist
+			if desiredCloneSet.ObjectMeta.Annotations != nil {
+				_, ok2 := desiredCloneSet.ObjectMeta.Annotations[AnnotationKeyOfSupervisorRDVersionn]
+				if ok2 {
+					isCloneSetNeedUpdate = true
+				}
+			}
+		}
+		Logger.Infof("[initK8sComponents]old annotations:%+v, new annotations:%+v", retCloneset.ObjectMeta.Annotations, desiredCloneSet.ObjectMeta.Annotations)
+		if isCloneSetNeedUpdate {
+			MaxRetryTimes := 100
+			RetryIntervalSec := 1
+			retryCnt := 0
+			Logger.Infof("[initK8sComponents]update clonneSet")
+			retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), &desiredCloneSet, metav1.UpdateOptions{})
+			for err != nil && retryCnt < MaxRetryTimes {
+				retryCnt++
+				time.Sleep(time.Duration(RetryIntervalSec) * time.Second)
+				Logger.Infof("[initK8sComponents][retry]update clonneSet")
+				retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), &desiredCloneSet, metav1.UpdateOptions{})
+			}
+		} else {
+			expectedImage := GetSupervisorDockerImager()
+			if expectedImage != retCloneset.Spec.Template.Spec.Containers[0].Image {
+				Logger.Warnf("[initK8sComponents]image has changed! from: %v to %v", retCloneset.Spec.Template.Spec.Containers[0].Image, expectedImage)
+				err = CloneSetPatchImage(c.Cli, c.Namespace, c.CloneSetName, expectedImage)
+				if err != nil {
+					panic(err.Error())
+				}
+				Logger.Infof("[initK8sComponents]image update done. from: %v to %v", retCloneset.Spec.Template.Spec.Containers[0].Image, expectedImage)
+				retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
+			}
 		}
 	}
 	if err != nil {
