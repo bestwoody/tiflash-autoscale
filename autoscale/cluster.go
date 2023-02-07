@@ -45,6 +45,20 @@ func GetSupervisorDockerImager() string {
 	}
 }
 
+func GetBusyBoxDockerImager() string {
+	// if HardCodeBusyBoxImage != "" {
+	// 	return HardCodeBusyBoxImage
+	// } else {
+	// if OptionRunMode == RunModeServeless {
+	// 	return "bestwoody/supervisor:serverless.v1.0"
+	// } else if OptionRunMode == RunModeLocal {
+	return "gcr.io/pingcap-public/dbaas/busybox:1.31.1"
+	// } else { // TODO
+	// 	return "bestwoody/supervisor:1"
+	// }
+	// }
+}
+
 const AutoScaleNamespace = "tiflash-autoscale"
 const ReadNodeCloneSetName = "readnode"
 
@@ -693,12 +707,57 @@ func (c *ClusterManager) initK8sComponents() {
 								Name: "supervisor",
 								// docker image
 								Image:           GetSupervisorDockerImager(),
-								ImagePullPolicy: "Always",
-								// VolumeMounts: []v1.VolumeMount{
-								// 	{
-								// 		Name:      volumeName,
-								// 		MountPath: "/usr/share/nginx/html",
-								// 	}},
+								ImagePullPolicy: "IfNotPresent",
+								VolumeMounts: []v1.VolumeMount{
+									{
+										Name:      "sharedtmpdisk",
+										MountPath: "/tiflash/log/",
+									}},
+							},
+							/*
+								- name: count-log-1
+									image: busybox:1.28
+									args: [/bin/sh, -c, 'tail -n+1 -F /var/log/1.log']
+									volumeMounts:
+									- name: varlog
+									  mountPath: /var/log */
+							{
+								Name:            "tiflash-log",
+								Image:           GetBusyBoxDockerImager(),
+								ImagePullPolicy: "IfNotPresent",
+								Args: []string{
+									"/bin/sh",
+									"-c",
+									"touch /tiflash/log/tiflash.log; tail -n0 -F /tiflash/log/tiflash.log;",
+								},
+								VolumeMounts: []v1.VolumeMount{
+									{
+										Name:      "sharedtmpdisk",
+										MountPath: "/tiflash/log/",
+									},
+								},
+							},
+							{
+								Name:            "tiflash-err-log",
+								Image:           GetBusyBoxDockerImager(),
+								ImagePullPolicy: "IfNotPresent",
+								Args: []string{
+									"/bin/sh",
+									"-c",
+									"touch /tiflash/log/tiflash_error.log; tail -n0 -F /tiflash/log/tiflash_error.log;",
+								},
+								VolumeMounts: []v1.VolumeMount{
+									{
+										Name:      "sharedtmpdisk",
+										MountPath: "/tiflash/log/",
+									},
+								},
+							},
+						},
+						Volumes: []v1.Volume{
+							{
+								Name: "sharedtmpdisk",
+								// EmptyDir: nil,
 							},
 						},
 					},
