@@ -630,6 +630,12 @@ func (c *ClusterManager) getComputePodToleration() []v1.Toleration {
 	}
 }
 
+func (c *ClusterManager) createCloneSet(cloneSet v1alpha1.CloneSet) (*v1alpha1.CloneSet, error) {
+	Logger.Infof("create clonneSet")
+	c.AutoScaleMeta.PrewarmPool.cntOfPending.Add(*cloneSet.Spec.Replicas)
+	return c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Create(context.TODO(), &cloneSet, metav1.CreateOptions{})
+}
+
 // checked
 // TODO pod storage volume
 func (c *ClusterManager) initK8sComponents() {
@@ -787,16 +793,10 @@ func (c *ClusterManager) initK8sComponents() {
 		},
 	}
 	if !found {
-		// volumeName := "tiflash-readnode-data-vol"
-		/// TODO ensure one pod one node and fixed nodegroup
 		//create cloneSet since there is no desired cloneSet
-		cloneSet := desiredCloneSet
-		Logger.Infof("create clonneSet")
-		c.AutoScaleMeta.PrewarmPool.cntOfPending.Add(*cloneSet.Spec.Replicas)
-		retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Create(context.TODO(), &cloneSet, metav1.CreateOptions{})
-
+		retCloneset, err = c.createCloneSet(desiredCloneSet)
 	} else {
-		isCloneSetNeedUpdate := false
+		isCloneSetNeedRecreate := false
 		Logger.Infof("get clonneSet")
 		retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Get(context.TODO(), c.CloneSetName, metav1.GetOptions{})
 		if err != nil {
@@ -809,7 +809,7 @@ func (c *ClusterManager) initK8sComponents() {
 					v2, ok2 := desiredCloneSet.ObjectMeta.Annotations[AnnotationKeyOfSupervisorRDVersionn]
 					if ok2 {
 						if v2 != v {
-							isCloneSetNeedUpdate = true
+							isCloneSetNeedRecreate = true
 						}
 					}
 				}
@@ -817,7 +817,7 @@ func (c *ClusterManager) initK8sComponents() {
 				if desiredCloneSet.ObjectMeta.Annotations != nil {
 					_, ok2 := desiredCloneSet.ObjectMeta.Annotations[AnnotationKeyOfSupervisorRDVersionn]
 					if ok2 {
-						isCloneSetNeedUpdate = true
+						isCloneSetNeedRecreate = true
 					}
 				}
 			}
@@ -825,22 +825,26 @@ func (c *ClusterManager) initK8sComponents() {
 			if desiredCloneSet.ObjectMeta.Annotations != nil {
 				_, ok2 := desiredCloneSet.ObjectMeta.Annotations[AnnotationKeyOfSupervisorRDVersionn]
 				if ok2 {
-					isCloneSetNeedUpdate = true
+					isCloneSetNeedRecreate = true
 				}
 			}
 		}
 		Logger.Infof("[initK8sComponents]old annotations:%+v, new annotations:%+v", retCloneset.ObjectMeta.Annotations, desiredCloneSet.ObjectMeta.Annotations)
-		if isCloneSetNeedUpdate {
+		if isCloneSetNeedRecreate {
 			MaxRetryTimes := 100
 			RetryIntervalSec := 1
 			retryCnt := 0
-			Logger.Infof("[initK8sComponents]update clonneSet")
-			retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), &desiredCloneSet, metav1.UpdateOptions{})
+			Logger.Infof("[initK8sComponents]recreate clonneSet")
+			Logger.Infof("[initK8sComponents]delete clonneSet")
+			err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Delete(context.TODO(), c.CloneSetName, metav1.DeleteOptions{})
 			for err != nil && retryCnt < MaxRetryTimes {
 				retryCnt++
 				time.Sleep(time.Duration(RetryIntervalSec) * time.Second)
-				Logger.Infof("[initK8sComponents][retry]update clonneSet")
-				retCloneset, err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Update(context.TODO(), &desiredCloneSet, metav1.UpdateOptions{})
+				Logger.Infof("[initK8sComponents][retry]delete clonneSet")
+				err = c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Delete(context.TODO(), c.CloneSetName, metav1.DeleteOptions{})
+			}
+			if err == nil {
+				retCloneset, err = c.createCloneSet(desiredCloneSet)
 			}
 		} else {
 			expectedImage := GetSupervisorDockerImager()
