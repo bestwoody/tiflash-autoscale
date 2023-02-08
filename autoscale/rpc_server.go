@@ -33,11 +33,11 @@ type server struct {
 }
 
 func (s *server) GetTopology(ctx context.Context, in *pb.GetTopologyRequest) (*pb.GetTopologyResponse, error) {
-	rpcRequestTotal.Inc()
 	start := time.Now()
 	defer func() {
 		rpcRequestMilliSeconds.Observe(float64(time.Since(start).Milliseconds()))
 	}()
+	rpcRequestTotal.Inc()
 	now := time.Now()
 	ts := now.UnixNano()
 
@@ -46,11 +46,11 @@ func (s *server) GetTopology(ctx context.Context, in *pb.GetTopologyRequest) (*p
 }
 
 func (s *server) ResumeAndGetTopology(ctx context.Context, req *pb.ResumeAndGetTopologyRequest) (*pb.ResumeAndGetTopologyResponse, error) {
-	rpcRequestTotal.Inc()
 	start := time.Now()
 	defer func() {
 		rpcRequestMilliSeconds.Observe(float64(time.Since(start).Milliseconds()))
 	}()
+	rpcRequestTotal.Inc()
 	st := time.Now()
 	ret := &pb.ResumeAndGetTopologyResponse{}
 	flag := Cm4Http.Resume(req.GetTidbClusterID())
