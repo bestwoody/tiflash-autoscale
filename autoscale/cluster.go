@@ -554,20 +554,20 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 			switch e.Type {
 			case watch.Added:
 				c.AutoScaleMeta.UpdatePod(pod)
-				WatchPodsLoopEventTotalAddedMetric.Inc()
+				MetricOfWatchPodsLoopEventAddedCnt.Inc()
 			case watch.Modified:
 				c.AutoScaleMeta.UpdatePod(pod)
-				WatchPodsLoopEventTotalModifiedMetric.Inc()
+				MetricOfWatchPodsLoopEventModifiedCnt.Inc()
 			case watch.Deleted:
 				c.AutoScaleMeta.HandleK8sDelPodEvent(pod.Name)
-				WatchPodsLoopEventTotalDeletedMetric.Inc()
+				MetricOfWatchPodsLoopEventDeletedCnt.Inc()
 			case watch.Error:
 				Logger.Error("[watchPodsLoop]watch.Error:%v", pod)
-				WatchPodsLoopEventTotalErrorMetric.Inc()
+				MetricOfWatchPodsLoopEventErrorCnt.Inc()
 			default:
 				fallthrough
 			case watch.Bookmark: //TODO handle it
-				WatchPodsLoopEventTotalBookmarkMetric.Inc()
+				MetricOfWatchPodsLoopEventBookmarkCnt.Inc()
 				continue
 			}
 			Logger.Infof("[watchPodsLoop] finish handle of new pod changes, pod:%v type:%v msgid:%v", pod.Name, e.Type, msgid)
