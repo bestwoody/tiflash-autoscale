@@ -201,4 +201,26 @@ var (
 
 	MetricOfSupervisorClientGetCurrentTenantErrorGrpcCnt = MetricOfSupervisorClientGetCurrentTenantErrorCnt.WithLabelValues("grpc")
 	//MetricOfSupervisorClientGetCurrentTenantErrorRespCnt = MetricOfSupervisorClientGetCurrentTenantErrorCnt.WithLabelValues("response")
+
+	MetricOfClonesetReplicaAddCnt = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "autoscale_cloneset_replica_add_total",
+			Help: "The total number of replicas added to cloneset",
+		},
+		[]string{"type"},
+	)
+
+	MetricOfClonesetReplicaAddSuccessCnt = MetricOfClonesetReplicaAddCnt.WithLabelValues("success")
+	MetricOfClonesetReplicaAddFailedCnt  = MetricOfClonesetReplicaAddCnt.WithLabelValues("failed")
+
+	MetricOfClonesetReplicaDelCnt = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "autoscale_cloneset_replica_del_total",
+			Help: "The total number of replicas deleted from cloneset",
+		},
+		[]string{"type"},
+	)
+
+	MetricOfClonesetReplicaDelSuccessCnt = MetricOfClonesetReplicaDelCnt.WithLabelValues("success")
+	MetricOfClonesetReplicaDelFailedCnt  = MetricOfClonesetReplicaDelCnt.WithLabelValues("failed")
 )
