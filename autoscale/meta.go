@@ -690,9 +690,11 @@ func (c *AutoScaleMeta) Dump() string {
 	for k, v := range c.tenantMap {
 		tenant2PodCntMap[k] = v.GetPodNames()
 	}
+	tenantCount.Set(float64(len(tenant2PodCntMap)))
 	for k, v := range c.PodDescMap {
 		pod2ip[k] = v.IP
 	}
+	podCount.Set(float64(len(pod2ip)))
 	// pendingCnt := c.pendingCnt
 	c.mu.Unlock()
 	return fmt.Sprintf("tenantcnt:%v, podcnt:%v, warmpool:%v tenants:{%+v}, pods:{%+v} ", len(tenant2PodCntMap), len(pod2ip), c.WarmedPods.GetPodNames(), tenant2PodCntMap, pod2ip)
