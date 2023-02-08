@@ -398,7 +398,6 @@ const (
 // }
 
 func main() {
-	autoscale.RegisterMetrics()
 	runtime.SetMutexProfileFraction(5)
 	runtime.SetBlockProfileRate(5)
 	// OpenkruiseTest()

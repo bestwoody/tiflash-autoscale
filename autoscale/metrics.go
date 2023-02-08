@@ -48,12 +48,3 @@ var (
 		[]string{"function"},
 	)
 )
-
-func RegisterMetrics() {
-	prometheus.MustRegister(tenantCount)
-	prometheus.MustRegister(podCount)
-	prometheus.MustRegister(rpcRequestTotal)
-	prometheus.MustRegister(rpcRequestMilliSeconds)
-	prometheus.MustRegister(httpRequestTotal)
-	prometheus.MustRegister(httpRequestMilliSeconds)
-}
