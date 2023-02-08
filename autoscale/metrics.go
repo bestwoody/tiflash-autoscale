@@ -16,23 +16,44 @@ var (
 		Help: "The current number of pods",
 	})
 
-	rpcRequestTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "autoscale_rpc_request_total",
-		Help: "The total number of rpc requests",
-	})
+	rpcRequestTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "autoscale_rpc_request_total",
+			Help: "The total number of rpc requests",
+		},
+		[]string{"function"},
+	)
 
-	rpcRequestMilliSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "autoscale_rpc_request_milliseconds",
-		Help: "The duration of rpc requests",
-	})
+	rpcRequestMilliSeconds = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "autoscale_rpc_request_milliseconds",
+			Help: "The duration of rpc requests",
+		},
+		[]string{"function"},
+	)
 
-	httpRequestTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "autoscale_http_request_total",
-		Help: "The total number of http requests",
-	})
+	httpRequestTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "autoscale_http_request_total",
+			Help: "The total number of http requests",
+		},
+		[]string{"function"},
+	)
 
-	httpRequestMilliSeconds = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "autoscale_http_request_milliseconds",
-		Help: "The duration of http requests",
-	})
+	httpRequestMilliSeconds = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "autoscale_http_request_milliseconds",
+			Help: "The duration of http requests",
+		},
+		[]string{"function"},
+	)
 )
+
+func RegisterMetrics() {
+	prometheus.MustRegister(tenantCount)
+	prometheus.MustRegister(podCount)
+	prometheus.MustRegister(rpcRequestTotal)
+	prometheus.MustRegister(rpcRequestMilliSeconds)
+	prometheus.MustRegister(httpRequestTotal)
+	prometheus.MustRegister(httpRequestMilliSeconds)
+}

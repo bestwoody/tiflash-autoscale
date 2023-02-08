@@ -101,9 +101,9 @@ func (ret *ResumeAndGetTopologyResult) WriteResp(hasErr int, state string, errIn
 func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() {
-		httpRequestMilliSeconds.Observe(float64(time.Since(start).Milliseconds()))
+		httpRequestMilliSeconds.WithLabelValues("SharedFixedPool").Observe(float64(time.Since(start).Milliseconds()))
 	}()
-	httpRequestTotal.Inc()
+	httpRequestTotal.WithLabelValues("SharedFixedPool").Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	ip, _ := getIP(req)
 	Logger.Infof("[HTTP]SharedFixedPool, client: %v", ip)
@@ -175,9 +175,9 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() {
-		httpRequestMilliSeconds.Observe(float64(time.Since(start).Milliseconds()))
+		httpRequestMilliSeconds.WithLabelValues("HttpHandleResumeAndGetTopology").Observe(float64(time.Since(start).Milliseconds()))
 	}()
-	httpRequestTotal.Inc()
+	httpRequestTotal.WithLabelValues("HttpHandleResumeAndGetTopology").Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	ip, _ := getIP(req)
 	tenantName := req.FormValue("tidbclusterid")
@@ -188,9 +188,9 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 func HttpHandlePauseForTest(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() {
-		httpRequestMilliSeconds.Observe(float64(time.Since(start).Milliseconds()))
+		httpRequestMilliSeconds.WithLabelValues("HttpHandlePauseForTest").Observe(float64(time.Since(start).Milliseconds()))
 	}()
-	httpRequestTotal.Inc()
+	httpRequestTotal.WithLabelValues("HttpHandlePauseForTest").Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	tenantName := req.FormValue("tidbclusterid")
 
@@ -218,9 +218,9 @@ func HttpHandlePauseForTest(w http.ResponseWriter, req *http.Request) {
 func DumpMeta(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() {
-		httpRequestMilliSeconds.Observe(float64(time.Since(start).Milliseconds()))
+		httpRequestMilliSeconds.WithLabelValues("DumpMeta").Observe(float64(time.Since(start).Milliseconds()))
 	}()
-	httpRequestTotal.Inc()
+	httpRequestTotal.WithLabelValues("DumpMeta").Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	Logger.Infof("[http]req of DumpMeta")
 	io.WriteString(w, Cm4Http.AutoScaleMeta.Dump())
@@ -229,9 +229,9 @@ func DumpMeta(w http.ResponseWriter, req *http.Request) {
 func GetStateServer(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() {
-		httpRequestMilliSeconds.Observe(float64(time.Since(start).Milliseconds()))
+		httpRequestMilliSeconds.WithLabelValues("GetStateServer").Observe(float64(time.Since(start).Milliseconds()))
 	}()
-	httpRequestTotal.Inc()
+	httpRequestTotal.WithLabelValues("GetStateServer").Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	tenantName := req.FormValue("tenantName")
 	if tenantName == "" {
@@ -317,9 +317,9 @@ func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*Po
 func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
 	defer func() {
-		httpRequestMilliSeconds.Observe(float64(time.Since(start).Milliseconds()))
+		httpRequestMilliSeconds.WithLabelValues("GetMetricsFromNode").Observe(float64(time.Since(start).Milliseconds()))
 	}()
-	httpRequestTotal.Inc()
+	httpRequestTotal.WithLabelValues("GetMetricsFromNode").Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	node := req.FormValue("node")
 	Logger.Infof("[http]GetMetricsFromNode, node:%v", node)
