@@ -660,9 +660,6 @@ func (c *ClusterManager) initK8sComponents() {
 				"app": c.CloneSetName,
 			},
 			Annotations: map[string]string{
-				"prometheus.io/path":                "/metrics",
-				"prometheus.io/port":                "8234",
-				"prometheus.io/scrape":              "true",
 				AnnotationKeyOfSupervisorRDVersionn: "1",
 			},
 		},
@@ -676,6 +673,11 @@ func (c *ClusterManager) initK8sComponents() {
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
 						"app": c.CloneSetName,
+					},
+					Annotations: map[string]string{
+						"prometheus.io/path":   "/metrics",
+						"prometheus.io/port":   "8234",
+						"prometheus.io/scrape": "true",
 					},
 				},
 				// pod anti affinity
