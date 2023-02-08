@@ -31,6 +31,14 @@ const (
 	RunModeCustom
 )
 
+var (
+	WatchPodsLoopEventTotalAdded    = WatchPodsLoopEventTotal.WithLabelValues("added")
+	WatchPodsLoopEventTotalModified = WatchPodsLoopEventTotal.WithLabelValues("modified")
+	WatchPodsLoopEventTotalDeleted  = WatchPodsLoopEventTotal.WithLabelValues("deleted")
+	WatchPodsLoopEventTotalError    = WatchPodsLoopEventTotal.WithLabelValues("error")
+	WatchPodsLoopEventTotalBookmark = WatchPodsLoopEventTotal.WithLabelValues("bookmark")
+)
+
 const AnnotationKeyOfSupervisorRDVersionn = "tiflash.autoscale.rdversion"
 
 func GetSupervisorDockerImager() string {
@@ -554,15 +562,20 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 			switch e.Type {
 			case watch.Added:
 				c.AutoScaleMeta.UpdatePod(pod)
+				WatchPodsLoopEventTotalAdded.Inc()
 			case watch.Modified:
 				c.AutoScaleMeta.UpdatePod(pod)
+				WatchPodsLoopEventTotalModified.Inc()
 			case watch.Deleted:
 				c.AutoScaleMeta.HandleK8sDelPodEvent(pod.Name)
+				WatchPodsLoopEventTotalDeleted.Inc()
 			case watch.Error:
 				Logger.Error("[watchPodsLoop]watch.Error:%v", pod)
+				WatchPodsLoopEventTotalError.Inc()
 			default:
 				fallthrough
 			case watch.Bookmark: //TODO handle it
+				WatchPodsLoopEventTotalBookmark.Inc()
 				continue
 			}
 			Logger.Infof("[watchPodsLoop] finish handle of new pod changes, pod:%v type:%v msgid:%v", pod.Name, e.Type, msgid)

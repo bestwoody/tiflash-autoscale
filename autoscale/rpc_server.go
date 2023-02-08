@@ -28,6 +28,14 @@ import (
 	"google.golang.org/grpc"
 )
 
+var (
+	rpcRequestMSResumeAndGetTopology = RpcRequestMS.WithLabelValues("ResumeAndGetTopology")
+	rpcRequestMSGetTopology          = RpcRequestMS.WithLabelValues("GetTopology")
+
+	rpcRequestTotalResumeAndGetTopology = RpcRequestTotal.WithLabelValues("ResumeAndGetTopology")
+	rpcRequestTotalGetTopology          = RpcRequestTotal.WithLabelValues("GetTopology")
+)
+
 type server struct {
 	// pb.UnimplementedAutoScaleServer
 }
@@ -35,9 +43,9 @@ type server struct {
 func (s *server) GetTopology(ctx context.Context, in *pb.GetTopologyRequest) (*pb.GetTopologyResponse, error) {
 	now := time.Now()
 	defer func() {
-		rpcRequestMilliSeconds.WithLabelValues("GetTopology").Observe(float64(time.Since(now).Milliseconds()))
+		rpcRequestMSGetTopology.Observe(float64(time.Since(now).Milliseconds()))
 	}()
-	rpcRequestTotal.WithLabelValues("GetTopology").Inc()
+	rpcRequestTotalGetTopology.Inc()
 	ts := now.UnixNano()
 
 	topoList := GetTopology(in.GetTidbClusterID())
@@ -47,9 +55,9 @@ func (s *server) GetTopology(ctx context.Context, in *pb.GetTopologyRequest) (*p
 func (s *server) ResumeAndGetTopology(ctx context.Context, req *pb.ResumeAndGetTopologyRequest) (*pb.ResumeAndGetTopologyResponse, error) {
 	st := time.Now()
 	defer func() {
-		rpcRequestMilliSeconds.WithLabelValues("ResumeAndGetTopology").Observe(float64(time.Since(st).Milliseconds()))
+		rpcRequestMSResumeAndGetTopology.Observe(float64(time.Since(st).Milliseconds()))
 	}()
-	rpcRequestTotal.WithLabelValues("ResumeAndGetTopology").Inc()
+	rpcRequestTotalResumeAndGetTopology.Inc()
 	ret := &pb.ResumeAndGetTopologyResponse{}
 	flag := Cm4Http.Resume(req.GetTidbClusterID())
 	if !flag {
