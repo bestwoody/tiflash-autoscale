@@ -6,31 +6,42 @@ import (
 )
 
 var (
-	TenantCount = promauto.NewGauge(prometheus.GaugeOpts{
+	TenantCountMetric = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "autoscale_tenant_count",
 		Help: "The current number of tenants",
 	})
 
-	PodCount = promauto.NewGauge(prometheus.GaugeOpts{
+	PodCountMetric = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "autoscale_pod_count",
 		Help: "The current number of pods",
 	})
 
-	DoPodsWarmCount = promauto.NewGaugeVec(
+	DoPodsWarmCountMetric = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "autoscale_do_pods_warm_count",
 			Help: "The current number of pods in function DoPodsWarm",
 		}, []string{"type"},
 	)
 
-	WatchPodsLoopEventTotal = promauto.NewCounterVec(
+	DoPodsWarmCountFailMetric    = DoPodsWarmCountMetric.WithLabelValues("fail")
+	DoPodsWarmCountDeltaMetric   = DoPodsWarmCountMetric.WithLabelValues("delta")
+	DoPodsWarmCountPendingMetric = DoPodsWarmCountMetric.WithLabelValues("pending")
+	DoPodsWarmCountValidMetric   = DoPodsWarmCountMetric.WithLabelValues("valid")
+
+	WatchPodsLoopEventTotalMetric = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "autoscale_watch_pods_loop_event_count",
+			Name: "autoscale_watch_pods_loop_event_total",
 			Help: "The total number of events in function WatchPodsLoop",
 		}, []string{"type"},
 	)
 
-	RpcRequestTotal = promauto.NewCounterVec(
+	WatchPodsLoopEventTotalAddedMetric    = WatchPodsLoopEventTotalMetric.WithLabelValues("added")
+	WatchPodsLoopEventTotalModifiedMetric = WatchPodsLoopEventTotalMetric.WithLabelValues("modified")
+	WatchPodsLoopEventTotalDeletedMetric  = WatchPodsLoopEventTotalMetric.WithLabelValues("deleted")
+	WatchPodsLoopEventTotalErrorMetric    = WatchPodsLoopEventTotalMetric.WithLabelValues("error")
+	WatchPodsLoopEventTotalBookmarkMetric = WatchPodsLoopEventTotalMetric.WithLabelValues("bookmark")
+
+	RpcRequestTotalMetric = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "autoscale_rpc_request_total",
 			Help: "The total number of rpc requests",
@@ -38,15 +49,22 @@ var (
 		[]string{"function"},
 	)
 
-	RpcRequestMS = promauto.NewHistogramVec(
+	RpcRequestTotalResumeAndGetTopologyMetric = RpcRequestTotalMetric.WithLabelValues("ResumeAndGetTopology")
+	RpcRequestTotalGetTopologyMetric          = RpcRequestTotalMetric.WithLabelValues("GetTopology")
+
+	RpcRequestSecondsMetric = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "autoscale_rpc_request_ms",
-			Help: "The duration of rpc requests",
+			Name:    "autoscale_rpc_request_seconds",
+			Help:    "The duration of rpc requests",
+			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
 		},
 		[]string{"function"},
 	)
 
-	HttpRequestTotal = promauto.NewCounterVec(
+	RpcRequestSecondsResumeAndGetTopologyMetric = RpcRequestSecondsMetric.WithLabelValues("ResumeAndGetTopology")
+	RpcRequestSecondsGetTopologyMetric          = RpcRequestSecondsMetric.WithLabelValues("GetTopology")
+
+	HttpRequestTotalMetric = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "autoscale_http_request_total",
 			Help: "The total number of http requests",
@@ -54,69 +72,133 @@ var (
 		[]string{"function"},
 	)
 
-	HttpRequestMS = promauto.NewHistogramVec(
+	HttpRequestTotalGetStateServerMetric                 = HttpRequestTotalMetric.WithLabelValues("GetStateServer")
+	HttpRequestTotalSharedFixedPoolMetric                = HttpRequestTotalMetric.WithLabelValues("SharedFixedPool")
+	HttpRequestTotalGetMetricsFromNodeMetric             = HttpRequestTotalMetric.WithLabelValues("GetMetricsFromNode")
+	HttpRequestTotalHttpHandleResumeAndGetTopologyMetric = HttpRequestTotalMetric.WithLabelValues("HttpHandleResumeAndGetTopology")
+	HttpRequestTotalHttpHandlePauseForTestMetric         = HttpRequestTotalMetric.WithLabelValues("HttpHandlePauseForTest")
+	HttpRequestTotalDumpMetaMetric                       = HttpRequestTotalMetric.WithLabelValues("DumpMeta")
+
+	HttpRequestSecondsMetric = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "autoscale_http_request_ms",
-			Help: "The duration of http requests",
+			Name:    "autoscale_http_request_seconds",
+			Help:    "The duration of http requests",
+			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
 		},
 		[]string{"function"},
 	)
 
-	AddPodIntoTenantTotal = promauto.NewCounter(
+	HttpRequestSecondsGetStateServerMetric                 = HttpRequestSecondsMetric.WithLabelValues("GetStateServer")
+	HttpRequestSecondsSharedFixedPoolMetric                = HttpRequestSecondsMetric.WithLabelValues("SharedFixedPool")
+	HttpRequestSecondsGetMetricsFromNodeMetric             = HttpRequestSecondsMetric.WithLabelValues("GetMetricsFromNode")
+	HttpRequestSecondsHttpHandleResumeAndGetTopologyMetric = HttpRequestSecondsMetric.WithLabelValues("HttpHandleResumeAndGetTopology")
+	HttpRequestSecondsHttpHandlePauseForTestMetric         = HttpRequestSecondsMetric.WithLabelValues("HttpHandlePauseForTest")
+	HttpRequestSecondsDumpMetaMetric                       = HttpRequestSecondsMetric.WithLabelValues("DumpMeta")
+
+	AddPodIntoTenantTotalMetric = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "autoscale_add_pod_into_tenant_total",
 			Help: "The total number of requesting function AddPodIntoTenant",
 		},
 	)
 
-	AddPodIntoTenantMS = promauto.NewHistogram(
+	AddPodIntoTenantSecondsMetric = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: "autoscale_add_pod_into_tenant_ms",
-			Help: "The duration of requesting function AddPodIntoTenant",
+			Name:    "autoscale_add_pod_into_tenant_seconds",
+			Help:    "The duration of requesting function AddPodIntoTenant",
+			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
 		},
 	)
 
-	AddPodTotal = promauto.NewCounter(
+	AddPodTotalMetric = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "autoscale_add_pod_total",
 			Help: "The total number of added pods",
 		},
+		[]string{"type"},
 	)
 
-	RemovePodFromTenantTotal = promauto.NewCounter(
+	AddPodTotalSuccessMetric = AddPodTotalMetric.WithLabelValues("success")
+	AddPodTotalFailedMetric  = AddPodTotalMetric.WithLabelValues("failed")
+
+	RemovePodFromTenantTotalMetric = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "autoscale_remove_pod_from_tenant_total",
 			Help: "The total number of requesting function RemovePodFromTenant",
 		},
 	)
 
-	RemovePodFromTenantMS = promauto.NewHistogram(
+	RemovePodFromTenantSecondsMetric = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: "autoscale_remove_pod_from_tenant_ms",
-			Help: "The duration of requesting function RemovePodFromTenant",
+			Name:    "autoscale_remove_pod_from_tenant_seconds",
+			Help:    "The duration of requesting function RemovePodFromTenant",
+			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
 		},
 	)
 
-	RemovePodTotal = promauto.NewCounter(
+	RemovePodTotalMetric = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "autoscale_remove_pod_total",
 			Help: "The total number of removed pods",
 		},
+		[]string{"type"},
 	)
 
-	SupervisorClientRequestTotal = promauto.NewCounterVec(
+	RemovePodTotalSuccessMetric = RemovePodTotalMetric.WithLabelValues("success")
+	RemovePodTotalFailedMetric  = RemovePodTotalMetric.WithLabelValues("failed")
+
+	SupervisorClientRequestTotalMetric = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "autoscale_supervisor_client_request_total",
 			Help: "The total number of requests to supervisor",
 		},
-		[]string{"function"},
+		[]string{"result"},
 	)
 
-	SupervisorClientRequestMS = promauto.NewHistogramVec(
+	SupervisorClientRequestTotalAssignTenantMetric     = SupervisorClientRequestTotalMetric.WithLabelValues("AssignTenant")
+	SupervisorClientRequestTotalUnassignTenantMetric   = SupervisorClientRequestTotalMetric.WithLabelValues("UnassignTenant")
+	SupervisorClientRequestTotalGetCurrentTenantMetric = SupervisorClientRequestTotalMetric.WithLabelValues("GetCurrentTenant")
+
+	SupervisorClientRequestSecondsMetric = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "autoscale_supervisor_client_request_ms",
-			Help: "The duration of requests to supervisor",
+			Name:    "autoscale_supervisor_client_request_seconds",
+			Help:    "The duration of requests to supervisor",
+			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
 		},
 		[]string{"function"},
 	)
+
+	SupervisorClientRequestSecondsAssignTenantMetric     = SupervisorClientRequestSecondsMetric.WithLabelValues("AssignTenant")
+	SupervisorClientRequestSecondsUnassignTenantMetric   = SupervisorClientRequestSecondsMetric.WithLabelValues("UnassignTenant")
+	SupervisorClientRequestSecondsGetCurrentTenantMetric = SupervisorClientRequestSecondsMetric.WithLabelValues("GetCurrentTenant")
+
+	SupervisorClientUnassignTenantErrorTotalMetric = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "autoscale_supervisor_client_unassign_tenant_error_total",
+			Help: "The total number of errors when unassigning tenant"},
+		[]string{"type"},
+	)
+
+	SupervisorClientUnassignTenantErrorTotalGrpcMetric = SupervisorClientUnassignTenantErrorTotalMetric.WithLabelValues("grpc")
+	SupervisorClientUnassignTenantErrorTotalRespMetric = SupervisorClientUnassignTenantErrorTotalMetric.WithLabelValues("response")
+
+	SupervisorClientAssignTenantErrorTotalMetric = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "autoscale_supervisor_client_assign_tenant_error_total",
+			Help: "The total number of errors when assigning tenant"},
+		[]string{"type"},
+	)
+
+	SupervisorClientAssignTenantErrorTotalGrpcMetric = SupervisorClientAssignTenantErrorTotalMetric.WithLabelValues("grpc")
+	SupervisorClientAssignTenantErrorTotalRespMetric = SupervisorClientAssignTenantErrorTotalMetric.WithLabelValues("response")
+
+	SupervisorClientGetCurrentTenantErrorTotalMetric = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "autoscale_supervisor_client_get_current_tenant_error_total",
+			Help: "The total number of errors when getting current tenant"},
+		[]string{"type"},
+	)
+
+	SupervisorClientGetCurrentTenantErrorTotalGrpcMetric = SupervisorClientGetCurrentTenantErrorTotalMetric.WithLabelValues("grpc")
+	SupervisorClientGetCurrentTenantErrorTotalRespMetric = SupervisorClientGetCurrentTenantErrorTotalMetric.WithLabelValues("response")
 )
