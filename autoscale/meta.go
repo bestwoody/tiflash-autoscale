@@ -567,8 +567,8 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 	p.mu.Unlock()
 
 	// Set these two metrics after unlock to avoid deadlock
-	MetricOfTenantSnapshot.Set(float64(c.AutoScaleMeta.GetTenantCnt()))
-	MetricOfPodSnapshot.Set(float64(c.AutoScaleMeta.GetPodCnt()))
+	MetricOfTenantCntSnapshot.Set(float64(c.AutoScaleMeta.GetTenantCnt()))
+	MetricOfPodCntSnapshot.Set(float64(c.AutoScaleMeta.GetPodCnt()))
 
 	// var ret *v1alpha1.CloneSet
 	var err error
@@ -1207,7 +1207,7 @@ func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodD
 // -1 is error
 func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer *TimeSeriesContainer, isResume bool, resultChan chan<- int) (retv int) {
 	start := time.Now()
-	MetricOfAddPodIntoTenantRequestCnt.Inc()
+	MetricOfAddPodIntoTenantCnt.Inc()
 	Logger.Infof("[AutoScaleMeta][resize][addPodIntoTenant][%v] %v %v isResume:%v", tenant, addCnt, tenant, isResume)
 	defer func() {
 		if resultChan != nil {

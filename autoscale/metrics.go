@@ -6,20 +6,20 @@ import (
 )
 
 var (
-	MetricOfTenantSnapshot = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "autoscale_tenant_count",
-		Help: "The current number of tenants",
+	MetricOfTenantCntSnapshot = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "autoscale_tenant_count_snapshot",
+		Help: "The snapshot of tenant count",
 	})
 
-	MetricOfPodSnapshot = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "autoscale_pod_count",
-		Help: "The current number of pods",
+	MetricOfPodCntSnapshot = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "autoscale_pod_count_snapshot",
+		Help: "The snapshot of pod count",
 	})
 
 	MetricOfDoPodsWarmSnapshot = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "autoscale_do_pods_warm_count",
-			Help: "The current number of pods in function DoPodsWarm",
+			Name: "autoscale_do_pods_warm_snapshot",
+			Help: "The snapshot in function DoPodsWarm",
 		}, []string{"type"},
 	)
 
@@ -49,20 +49,20 @@ var (
 		[]string{"type"},
 	)
 
-	MetricOfRpcRequestResumeAndGetTopologyCnt = MetricOfRpcRequestCnt.WithLabelValues("ResumeAndGetTopology")
-	MetricOfRpcRequestGetTopologyCnt          = MetricOfRpcRequestCnt.WithLabelValues("GetTopology")
+	MetricOfRpcRequestResumeAndGetTopologyCnt = MetricOfRpcRequestCnt.WithLabelValues("resume_and_get_topology")
+	MetricOfRpcRequestGetTopologyCnt          = MetricOfRpcRequestCnt.WithLabelValues("get_topology")
 
 	MetricOfRpcRequestSeconds = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "autoscale_rpc_request_seconds",
+			Name:    "autoscale_rpc_request_duration_seconds",
 			Help:    "The duration of rpc requests",
 			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
 		},
 		[]string{"type"},
 	)
 
-	MetricOfRpcRequestResumeAndGetTopologySeconds = MetricOfRpcRequestSeconds.WithLabelValues("ResumeAndGetTopology")
-	MetricOfRpcRequestGetTopologySeconds          = MetricOfRpcRequestSeconds.WithLabelValues("GetTopology")
+	MetricOfRpcRequestResumeAndGetTopologySeconds = MetricOfRpcRequestSeconds.WithLabelValues("resume_and_get_topology")
+	MetricOfRpcRequestGetTopologySeconds          = MetricOfRpcRequestSeconds.WithLabelValues("get_topology")
 
 	MetricOfHttpRequestCnt = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -72,80 +72,63 @@ var (
 		[]string{"type"},
 	)
 
-	MetricOfHttpRequestGetStateServerCnt                 = MetricOfHttpRequestCnt.WithLabelValues("GetStateServer")
-	MetricOfHttpRequestSharedFixedPoolCnt                = MetricOfHttpRequestCnt.WithLabelValues("SharedFixedPool")
-	MetricOfHttpRequestGetMetricsFromNodeCnt             = MetricOfHttpRequestCnt.WithLabelValues("GetMetricsFromNode")
-	MetricOfHttpRequestHttpHandleResumeAndGetTopologyCnt = MetricOfHttpRequestCnt.WithLabelValues("HttpHandleResumeAndGetTopology")
-	MetricOfHttpRequestHttpHandlePauseForTestCnt         = MetricOfHttpRequestCnt.WithLabelValues("HttpHandlePauseForTest")
-	MetricOfHttpRequestDumpMetaCnt                       = MetricOfHttpRequestCnt.WithLabelValues("DumpMeta")
+	MetricOfHttpRequestGetStateServerCnt                 = MetricOfHttpRequestCnt.WithLabelValues("get_state_server")
+	MetricOfHttpRequestSharedFixedPoolCnt                = MetricOfHttpRequestCnt.WithLabelValues("shared_fixed_pool")
+	MetricOfHttpRequestGetMetricsFromNodeCnt             = MetricOfHttpRequestCnt.WithLabelValues("get_metrics_from_node")
+	MetricOfHttpRequestHttpHandleResumeAndGetTopologyCnt = MetricOfHttpRequestCnt.WithLabelValues("http_handle_resume_and_get_topology")
+	MetricOfHttpRequestHttpHandlePauseForTestCnt         = MetricOfHttpRequestCnt.WithLabelValues("http_handle_pause_for_test")
+	MetricOfHttpRequestDumpMetaCnt                       = MetricOfHttpRequestCnt.WithLabelValues("dump_meta")
 
 	MetricOfHttpRequestSeconds = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "autoscale_http_request_seconds",
+			Name:    "autoscale_http_request_duration_seconds",
 			Help:    "The duration of http requests",
 			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
 		},
 		[]string{"type"},
 	)
 
-	MetricOfHttpRequestGetStateServerSeconds                       = MetricOfHttpRequestSeconds.WithLabelValues("GetStateServer")
-	MetricOfHttpRequestSharedFixedPoolMetricSeconds                = MetricOfHttpRequestSeconds.WithLabelValues("SharedFixedPool")
-	MetricOfHttpRequestGetMetricsFromNodeSeconds                   = MetricOfHttpRequestSeconds.WithLabelValues("GetMetricsFromNode")
-	MetricOfHttpRequestHttpHandleResumeAndGetTopologyMetricSeconds = MetricOfHttpRequestSeconds.WithLabelValues("HttpHandleResumeAndGetTopology")
-	MetricOfHttpRequestHttpHandlePauseForTestMetricSeconds         = MetricOfHttpRequestSeconds.WithLabelValues("HttpHandlePauseForTest")
-	MetricOfHttpRequestDumpMetaSeconds                             = MetricOfHttpRequestSeconds.WithLabelValues("DumpMeta")
+	MetricOfHttpRequestGetStateServerSeconds                       = MetricOfHttpRequestSeconds.WithLabelValues("get_state_server")
+	MetricOfHttpRequestSharedFixedPoolMetricSeconds                = MetricOfHttpRequestSeconds.WithLabelValues("shared_fixed_pool")
+	MetricOfHttpRequestGetMetricsFromNodeSeconds                   = MetricOfHttpRequestSeconds.WithLabelValues("get_metrics_from_node")
+	MetricOfHttpRequestHttpHandleResumeAndGetTopologyMetricSeconds = MetricOfHttpRequestSeconds.WithLabelValues("http_handle_resume_and_get_topology")
+	MetricOfHttpRequestHttpHandlePauseForTestMetricSeconds         = MetricOfHttpRequestSeconds.WithLabelValues("http_handle_pause_for_test")
+	MetricOfHttpRequestDumpMetaSeconds                             = MetricOfHttpRequestSeconds.WithLabelValues("dump_meta")
 
-	MetricOfAddPodIntoTenantRequestCnt = promauto.NewCounter(
+	MetricOfChangeOfPodOnTenantCnt = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "autoscale_add_pod_into_tenant_request_total",
-			Help: "The total number of requesting function AddPodIntoTenant",
-		},
-	)
-
-	MetricOfAddPodIntoTenantSeconds = promauto.NewHistogram(
-		prometheus.HistogramOpts{
-			Name:    "autoscale_add_pod_into_tenant_seconds",
-			Help:    "The duration of requesting function AddPodIntoTenant",
-			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
-		},
-	)
-
-	MetricOfAddPodCnt = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "autoscale_add_pod_total",
-			Help: "The total number of added pods",
+			Name: "autoscale_changes_of_pod_on_tenant_total",
+			Help: "The total number of pods changed on tenant",
 		},
 		[]string{"type"},
 	)
 
-	MetricOfAddPodSuccessCnt = MetricOfAddPodCnt.WithLabelValues("success")
-	MetricOfAddPodFailedCnt  = MetricOfAddPodCnt.WithLabelValues("failed")
-
-	MetricOfRemovePodFromTenantCnt = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "autoscale_remove_pod_from_tenant_total",
-			Help: "The total number of requesting function RemovePodFromTenant",
-		},
-	)
-
-	MetricOfRemovePodFromTenantSeconds = promauto.NewHistogram(
+	MetricOfChangeOfPodOnTenantSeconds = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "autoscale_remove_pod_from_tenant_seconds",
-			Help:    "The duration of requesting function RemovePodFromTenant",
+			Name:    "autoscale_changes_of_pod_on_tenant_duration_seconds",
+			Help:    "The duration of changing pods on tenant",
 			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
-		},
-	)
-
-	MetricOfRemovePodCnt = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "autoscale_remove_pod_total",
-			Help: "The total number of removed pods",
 		},
 		[]string{"type"},
 	)
 
-	MetricOfRemovePodSuccessCnt = MetricOfRemovePodCnt.WithLabelValues("success")
-	MetricOfRemovePodFailedCnt  = MetricOfRemovePodCnt.WithLabelValues("failed")
+	MetricOfAddPodIntoTenantCnt        = MetricOfChangeOfPodOnTenantCnt.WithLabelValues("add")
+	MetricOfRemovePodFromTenantCnt     = MetricOfChangeOfPodOnTenantCnt.WithLabelValues("remove")
+	MetricOfAddPodIntoTenantSeconds    = MetricOfChangeOfPodOnTenantSeconds.WithLabelValues("add")
+	MetricOfRemovePodFromTenantSeconds = MetricOfChangeOfPodOnTenantSeconds.WithLabelValues("remove")
+
+	MetricOfChangeOfPodCnt = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "autoscale_changes_of_pod_total",
+			Help: "The total number of changed pods",
+		},
+		[]string{"type"},
+	)
+
+	MetricOfAddPodSuccessCnt    = MetricOfChangeOfPodCnt.WithLabelValues("add_success")
+	MetricOfAddPodFailedCnt     = MetricOfChangeOfPodCnt.WithLabelValues("add_failed")
+	MetricOfRemovePodSuccessCnt = MetricOfChangeOfPodCnt.WithLabelValues("remove_success")
+	MetricOfRemovePodFailedCnt  = MetricOfChangeOfPodCnt.WithLabelValues("remove_failed")
 
 	MetricOfSupervisorClientRequestCnt = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -155,72 +138,40 @@ var (
 		[]string{"type"},
 	)
 
-	MetricOfSupervisorClientRequestAssignTenantCnt     = MetricOfSupervisorClientRequestCnt.WithLabelValues("AssignTenant")
-	MetricOfSupervisorClientRequestUnassignTenantCnt   = MetricOfSupervisorClientRequestCnt.WithLabelValues("UnassignTenant")
-	MetricOfSupervisorClientRequestGetCurrentTenantCnt = MetricOfSupervisorClientRequestCnt.WithLabelValues("GetCurrentTenant")
+	MetricOfSupervisorClientRequestAssignTenantCnt     = MetricOfSupervisorClientRequestCnt.WithLabelValues("assign_tenant")
+	MetricOfSupervisorClientRequestUnassignTenantCnt   = MetricOfSupervisorClientRequestCnt.WithLabelValues("unassign_tenant")
+	MetricOfSupervisorClientRequestGetCurrentTenantCnt = MetricOfSupervisorClientRequestCnt.WithLabelValues("get_current_tenant")
+
+	MetricOfSupervisorClientAssignTenantErrorGrpcCnt     = MetricOfSupervisorClientRequestCnt.WithLabelValues("assign_tenant_grpc_fail")
+	MetricOfSupervisorClientAssignTenantErrorRespCnt     = MetricOfSupervisorClientRequestCnt.WithLabelValues("assign_tenant_response_fail")
+	MetricOfSupervisorClientUnassignTenantErrorGrpcCnt   = MetricOfSupervisorClientRequestCnt.WithLabelValues("unassign_tenant_grpc_fail")
+	MetricOfSupervisorClientUnassignTenantErrorRespCnt   = MetricOfSupervisorClientRequestCnt.WithLabelValues("unassign_tenant_response_fail")
+	MetricOfSupervisorClientGetCurrentTenantErrorGrpcCnt = MetricOfSupervisorClientRequestCnt.WithLabelValues("get_current_tenant_grpc_fail")
 
 	MetricOfSupervisorClientRequestSeconds = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "autoscale_supervisor_client_request_seconds",
+			Name:    "autoscale_supervisor_client_request_duration_seconds",
 			Help:    "The duration of requests to supervisor",
 			Buckets: prometheus.ExponentialBuckets(0.0005, 5, 10),
 		},
 		[]string{"type"},
 	)
 
-	MetricOfSupervisorClientRequestAssignTenantSeconds     = MetricOfSupervisorClientRequestSeconds.WithLabelValues("AssignTenant")
-	MetricOfSupervisorClientRequestUnassignTenantSeconds   = MetricOfSupervisorClientRequestSeconds.WithLabelValues("UnassignTenant")
-	MetricOfSupervisorClientRequestGetCurrentTenantSeconds = MetricOfSupervisorClientRequestSeconds.WithLabelValues("GetCurrentTenant")
+	MetricOfSupervisorClientRequestAssignTenantSeconds     = MetricOfSupervisorClientRequestSeconds.WithLabelValues("assign_tenant")
+	MetricOfSupervisorClientRequestUnassignTenantSeconds   = MetricOfSupervisorClientRequestSeconds.WithLabelValues("unassign_tenant")
+	MetricOfSupervisorClientRequestGetCurrentTenantSeconds = MetricOfSupervisorClientRequestSeconds.WithLabelValues("get_current_tenant")
 
-	MetricOfSupervisorClientUnassignTenantErrorCnt = promauto.NewCounterVec(
+	MetricOfChangeOfClonesetReplicaCnt = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "autoscale_supervisor_client_unassign_tenant_error_total",
-			Help: "The total number of errors when unassigning tenant"},
-		[]string{"type"},
-	)
-
-	MetricOfSupervisorClientUnassignTenantErrorGrpcCnt = MetricOfSupervisorClientUnassignTenantErrorCnt.WithLabelValues("grpc")
-	MetricOfSupervisorClientUnassignTenantErrorRespCnt = MetricOfSupervisorClientUnassignTenantErrorCnt.WithLabelValues("response")
-
-	MetricOfSupervisorClientAssignTenantErrorCnt = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "autoscale_supervisor_client_assign_tenant_error_total",
-			Help: "The total number of errors when assigning tenant"},
-		[]string{"type"},
-	)
-
-	MetricOfSupervisorClientAssignTenantErrorGrpcCnt = MetricOfSupervisorClientAssignTenantErrorCnt.WithLabelValues("grpc")
-	MetricOfSupervisorClientAssignTenantErrorRespCnt = MetricOfSupervisorClientAssignTenantErrorCnt.WithLabelValues("response")
-
-	MetricOfSupervisorClientGetCurrentTenantErrorCnt = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "autoscale_supervisor_client_get_current_tenant_error_total",
-			Help: "The total number of errors when getting current tenant"},
-		[]string{"type"},
-	)
-
-	MetricOfSupervisorClientGetCurrentTenantErrorGrpcCnt = MetricOfSupervisorClientGetCurrentTenantErrorCnt.WithLabelValues("grpc")
-	//MetricOfSupervisorClientGetCurrentTenantErrorRespCnt = MetricOfSupervisorClientGetCurrentTenantErrorCnt.WithLabelValues("response")
-
-	MetricOfClonesetReplicaAddCnt = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "autoscale_cloneset_replica_add_total",
-			Help: "The total number of replicas added to cloneset",
+			Name: "autoscale_cloneset_replica_change_total",
+			Help: "The total number of replicas changed in cloneset",
 		},
 		[]string{"type"},
 	)
 
-	MetricOfClonesetReplicaAddSuccessCnt = MetricOfClonesetReplicaAddCnt.WithLabelValues("success")
-	MetricOfClonesetReplicaAddFailedCnt  = MetricOfClonesetReplicaAddCnt.WithLabelValues("failed")
+	MetricOfClonesetReplicaAddSuccessCnt = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("add_success")
+	MetricOfClonesetReplicaAddFailedCnt  = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("add_failed")
 
-	MetricOfClonesetReplicaDelCnt = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "autoscale_cloneset_replica_del_total",
-			Help: "The total number of replicas deleted from cloneset",
-		},
-		[]string{"type"},
-	)
-
-	MetricOfClonesetReplicaDelSuccessCnt = MetricOfClonesetReplicaDelCnt.WithLabelValues("success")
-	MetricOfClonesetReplicaDelFailedCnt  = MetricOfClonesetReplicaDelCnt.WithLabelValues("failed")
+	MetricOfClonesetReplicaDelSuccessCnt = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("delete_success")
+	MetricOfClonesetReplicaDelFailedCnt  = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("delete_failed")
 )
