@@ -557,8 +557,6 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 
 	/// DO real pods resize!!!!
 	delta := failCntTotal + p.SoftLimit - (int(p.cntOfPending.Load()) + p.WarmedPods.GetCntOfPods())
-	MetricOfTenantSnapshot.Set(float64(c.AutoScaleMeta.GetTenantCnt()))
-	MetricOfPodSnapshot.Set(float64(c.AutoScaleMeta.GetPodCnt()))
 	MetricOfDoPodsWarmFailSnapshot.Set(float64(failCntTotal))
 	MetricOfDoPodsWarmDeltaSnapshot.Set(float64(delta))
 	MetricOfDoPodsWarmPendingSnapshot.Set(float64(p.cntOfPending.Load()))
@@ -567,6 +565,9 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 		Logger.Infof("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v valid:%v ", failCntTotal, delta, p.cntOfPending.Load(), p.WarmedPods.GetCntOfPods())
 	}
 	p.mu.Unlock()
+
+	MetricOfTenantSnapshot.Set(float64(c.AutoScaleMeta.GetTenantCnt()))
+	MetricOfPodSnapshot.Set(float64(c.AutoScaleMeta.GetPodCnt()))
 
 	// var ret *v1alpha1.CloneSet
 	var err error
