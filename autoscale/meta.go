@@ -566,6 +566,7 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 	}
 	p.mu.Unlock()
 
+	// Set these two metrics after unlock to avoid deadlock
 	MetricOfTenantSnapshot.Set(float64(c.AutoScaleMeta.GetTenantCnt()))
 	MetricOfPodSnapshot.Set(float64(c.AutoScaleMeta.GetPodCnt()))
 
