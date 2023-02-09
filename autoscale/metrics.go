@@ -125,9 +125,9 @@ var (
 		[]string{"type"},
 	)
 
-	MetricOfAddPodSuccessCnt    = MetricOfChangeOfPodCnt.WithLabelValues("add_success")
+	MetricOfAddPodSuccessCnt    = MetricOfChangeOfPodCnt.WithLabelValues("add")
 	MetricOfAddPodFailedCnt     = MetricOfChangeOfPodCnt.WithLabelValues("add_failed")
-	MetricOfRemovePodSuccessCnt = MetricOfChangeOfPodCnt.WithLabelValues("remove_success")
+	MetricOfRemovePodSuccessCnt = MetricOfChangeOfPodCnt.WithLabelValues("remove")
 	MetricOfRemovePodFailedCnt  = MetricOfChangeOfPodCnt.WithLabelValues("remove_failed")
 
 	MetricOfSupervisorClientRequestCnt = promauto.NewCounterVec(
@@ -169,9 +169,9 @@ var (
 		[]string{"type"},
 	)
 
-	MetricOfClonesetReplicaAddSuccessCnt = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("add_success")
+	MetricOfClonesetReplicaAddSuccessCnt = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("add")
 	MetricOfClonesetReplicaAddFailedCnt  = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("add_failed")
 
-	MetricOfClonesetReplicaDelSuccessCnt = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("delete_success")
+	MetricOfClonesetReplicaDelSuccessCnt = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("delete")
 	MetricOfClonesetReplicaDelFailedCnt  = MetricOfChangeOfClonesetReplicaCnt.WithLabelValues("delete_failed")
 )
