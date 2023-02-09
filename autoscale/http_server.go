@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io"
 	"log"
 	"net"
@@ -98,6 +99,11 @@ func (ret *ResumeAndGetTopologyResult) WriteResp(hasErr int, state string, errIn
 }
 
 func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() {
+		MetricOfHttpRequestSharedFixedPoolMetricSeconds.Observe(time.Since(start).Seconds())
+	}()
+	MetricOfHttpRequestSharedFixedPoolCnt.Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	ip, _ := getIP(req)
 	Logger.Infof("[HTTP]SharedFixedPool, client: %v", ip)
@@ -167,6 +173,11 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 }
 
 func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() {
+		MetricOfHttpRequestHttpHandleResumeAndGetTopologyMetricSeconds.Observe(time.Since(start).Seconds())
+	}()
+	MetricOfHttpRequestHttpHandleResumeAndGetTopologyCnt.Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	ip, _ := getIP(req)
 	tenantName := req.FormValue("tidbclusterid")
@@ -175,6 +186,11 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 }
 
 func HttpHandlePauseForTest(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() {
+		MetricOfHttpRequestHttpHandlePauseForTestMetricSeconds.Observe(time.Since(start).Seconds())
+	}()
+	MetricOfHttpRequestHttpHandlePauseForTestCnt.Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	tenantName := req.FormValue("tidbclusterid")
 
@@ -200,12 +216,22 @@ func HttpHandlePauseForTest(w http.ResponseWriter, req *http.Request) {
 }
 
 func DumpMeta(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() {
+		MetricOfHttpRequestDumpMetaSeconds.Observe(time.Since(start).Seconds())
+	}()
+	MetricOfHttpRequestDumpMetaCnt.Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	Logger.Infof("[http]req of DumpMeta")
 	io.WriteString(w, Cm4Http.AutoScaleMeta.Dump())
 }
 
 func GetStateServer(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() {
+		MetricOfHttpRequestGetStateServerSeconds.Observe(time.Since(start).Seconds())
+	}()
+	MetricOfHttpRequestGetStateServerCnt.Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	tenantName := req.FormValue("tenantName")
 	if tenantName == "" {
@@ -289,6 +315,11 @@ func proxyMetrics(restCli rest.Interface, node string, podDescMap map[string]*Po
 }
 
 func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
+	start := time.Now()
+	defer func() {
+		MetricOfHttpRequestGetMetricsFromNodeSeconds.Observe(time.Since(start).Seconds())
+	}()
+	MetricOfHttpRequestGetMetricsFromNodeCnt.Inc()
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	node := req.FormValue("node")
 	Logger.Infof("[http]GetMetricsFromNode, node:%v", node)
@@ -314,6 +345,7 @@ func RunAutoscaleHttpServer() {
 
 	http.HandleFunc("/getstate", GetStateServer)
 	http.HandleFunc("/metrics", GetMetricsFromNode)
+	http.Handle("/self-metrics", promhttp.Handler())
 	http.HandleFunc("/resume-and-get-topology", HttpHandleResumeAndGetTopology)
 	http.HandleFunc("/pause4test", HttpHandlePauseForTest)
 	http.HandleFunc("/sharedfixedpool", SharedFixedPool)

@@ -554,15 +554,20 @@ func (c *ClusterManager) watchPodsLoop(resourceVersion string) {
 			switch e.Type {
 			case watch.Added:
 				c.AutoScaleMeta.UpdatePod(pod)
+				MetricOfWatchPodsLoopEventAddedCnt.Inc()
 			case watch.Modified:
 				c.AutoScaleMeta.UpdatePod(pod)
+				MetricOfWatchPodsLoopEventModifiedCnt.Inc()
 			case watch.Deleted:
 				c.AutoScaleMeta.HandleK8sDelPodEvent(pod.Name)
+				MetricOfWatchPodsLoopEventDeletedCnt.Inc()
 			case watch.Error:
 				Logger.Error("[watchPodsLoop]watch.Error:%v", pod)
+				MetricOfWatchPodsLoopEventErrorCnt.Inc()
 			default:
 				fallthrough
 			case watch.Bookmark: //TODO handle it
+				MetricOfWatchPodsLoopEventBookmarkCnt.Inc()
 				continue
 			}
 			Logger.Infof("[watchPodsLoop] finish handle of new pod changes, pod:%v type:%v msgid:%v", pod.Name, e.Type, msgid)
@@ -1049,11 +1054,13 @@ func (c *ClusterManager) addNewPods(delta int32, retryCnt int) (*v1alpha1.CloneS
 			}
 		}
 		c.muOfCloneSet.Unlock()
+		MetricOfClonesetReplicaAddFailedCnt.Add(float64(delta))
 		return c.CloneSet, fmt.Errorf(err.Error())
 	} else {
 		c.CloneSet = ret.DeepCopy()
 		c.muOfCloneSet.Unlock()
 		Logger.Infof("[ClusterManager][addPods] addNewPods, curReplica:%v newReplica:%v", oldRelica, *newReplicas)
+		MetricOfClonesetReplicaAddSuccessCnt.Add(float64(delta))
 		return ret, nil
 	}
 
@@ -1081,12 +1088,14 @@ func (c *ClusterManager) removePods(pods2del []string, retryCnt int) (*v1alpha1.
 			}
 		}
 		c.muOfCloneSet.Unlock()
+		MetricOfClonesetReplicaDelFailedCnt.Add(float64(len(pods2del)))
 		return c.CloneSet, fmt.Errorf(err.Error())
 	} else {
 		c.CloneSet = ret.DeepCopy()
 		ret.Spec.ScaleStrategy.PodsToDelete = nil // reset field Spec.ScaleStrategy.PodsToDelete
 		c.muOfCloneSet.Unlock()
 		Logger.Infof("[ClusterManager][removePods] removePods, curReplica:%v newReplica:%v, pods2del: %+v", oldRelica, *newReplicas, pods2del)
+		MetricOfClonesetReplicaDelSuccessCnt.Add(float64(len(pods2del)))
 		return ret, nil
 	}
 }

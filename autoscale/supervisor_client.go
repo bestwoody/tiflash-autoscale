@@ -27,17 +27,22 @@ func AssignTenantHardCodeArgs(podIP string, tenantName string) (resp *supervisor
 }
 
 func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr string) (resp *supervisor.Result, err error) {
+	start := time.Now()
+	MetricOfSupervisorClientRequestAssignTenantCnt.Inc()
 	defer func() {
 		if err != nil || (resp != nil && resp.HasErr) {
 			var err1, err2 string
 			if err != nil {
 				err1 = err.Error()
+				MetricOfSupervisorClientAssignTenantErrorGrpcCnt.Inc()
 			}
 			if resp != nil && resp.HasErr {
 				err2 = resp.ErrInfo
+				MetricOfSupervisorClientAssignTenantErrorRespCnt.Inc()
 			}
 			Logger.Errorf("[error][SupClient]failed to AssignTenant, grpc_err: %v  api_err: %v", err1, err2)
 		}
+		MetricOfSupervisorClientRequestAssignTenantSeconds.Observe(time.Since(start).Seconds())
 	}()
 	if !IsSupClientMock {
 		Logger.Infof("[SupClient][AssignTenant]grpc dial addr: %v ", podIP+":"+SupervisorPort)
@@ -78,17 +83,22 @@ func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr
 }
 
 func UnassignTenant(podIP string, tenantName string, forceShutdown bool) (resp *supervisor.Result, err error) {
+	start := time.Now()
+	MetricOfSupervisorClientRequestUnassignTenantCnt.Inc()
 	defer func() {
 		if err != nil || (resp != nil && resp.HasErr) {
 			var err1, err2 string
 			if err != nil {
 				err1 = err.Error()
+				MetricOfSupervisorClientUnassignTenantErrorGrpcCnt.Inc()
 			}
 			if resp != nil && resp.HasErr {
 				err2 = resp.ErrInfo
+				MetricOfSupervisorClientUnassignTenantErrorRespCnt.Inc()
 			}
 			Logger.Errorf("[error][SupClient]failed to UnassignTenant, grpc_err: %v  api_err: %v", err1, err2)
 		}
+		MetricOfSupervisorClientRequestUnassignTenantSeconds.Observe(time.Since(start).Seconds())
 	}()
 	if !IsSupClientMock {
 		Logger.Infof("[SupClient][UnassignTenant]grpc dial addr: %v ", podIP+":"+SupervisorPort)
@@ -125,10 +135,14 @@ func UnassignTenant(podIP string, tenantName string, forceShutdown bool) (resp *
 }
 
 func GetCurrentTenant(podIP string) (resp *supervisor.GetTenantResponse, err error) {
+	start := time.Now()
+	MetricOfSupervisorClientRequestGetCurrentTenantCnt.Inc()
 	defer func() {
 		if err != nil {
+			MetricOfSupervisorClientGetCurrentTenantErrorGrpcCnt.Inc()
 			Logger.Errorf("[error][SupClient]failed to GetCurrentTenant, grpc_err: %v", err.Error())
 		}
+		MetricOfSupervisorClientRequestGetCurrentTenantSeconds.Observe(time.Since(start).Seconds())
 	}()
 	if !IsSupClientMock {
 		Logger.Infof("[GetCurrentTenant]grpc dial addr: %v ", podIP+":"+SupervisorPort)

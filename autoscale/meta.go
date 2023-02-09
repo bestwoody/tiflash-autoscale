@@ -557,11 +557,18 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 
 	/// DO real pods resize!!!!
 	delta := failCntTotal + p.SoftLimit - (int(p.cntOfPending.Load()) + p.WarmedPods.GetCntOfPods())
-
+	MetricOfDoPodsWarmFailSnapshot.Set(float64(failCntTotal))
+	MetricOfDoPodsWarmDeltaSnapshot.Set(float64(delta))
+	MetricOfDoPodsWarmPendingSnapshot.Set(float64(p.cntOfPending.Load()))
+	MetricOfDoPodsWarmValidSnapshot.Set(float64(p.WarmedPods.GetCntOfPods()))
 	if delta != 0 {
 		Logger.Infof("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v valid:%v ", failCntTotal, delta, p.cntOfPending.Load(), p.WarmedPods.GetCntOfPods())
 	}
 	p.mu.Unlock()
+
+	// Set these two metrics after unlock to avoid deadlock
+	MetricOfTenantCntSnapshot.Set(float64(c.AutoScaleMeta.GetTenantCnt()))
+	MetricOfPodCntSnapshot.Set(float64(c.AutoScaleMeta.GetPodCnt()))
 
 	// var ret *v1alpha1.CloneSet
 	var err error
@@ -696,6 +703,18 @@ func (c *AutoScaleMeta) Dump() string {
 	// pendingCnt := c.pendingCnt
 	c.mu.Unlock()
 	return fmt.Sprintf("tenantcnt:%v, podcnt:%v, warmpool:%v tenants:{%+v}, pods:{%+v} ", len(tenant2PodCntMap), len(pod2ip), c.WarmedPods.GetPodNames(), tenant2PodCntMap, pod2ip)
+}
+
+func (c *AutoScaleMeta) GetTenantCnt() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.tenantMap)
+}
+
+func (c *AutoScaleMeta) GetPodCnt() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.PodDescMap)
 }
 
 // checked
@@ -1187,11 +1206,14 @@ func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodD
 // return cnt fail to add
 // -1 is error
 func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer *TimeSeriesContainer, isResume bool, resultChan chan<- int) (retv int) {
+	start := time.Now()
+	MetricOfAddPodIntoTenantCnt.Inc()
 	Logger.Infof("[AutoScaleMeta][resize][addPodIntoTenant][%v] %v %v isResume:%v", tenant, addCnt, tenant, isResume)
 	defer func() {
 		if resultChan != nil {
 			resultChan <- retv
 		}
+		MetricOfAddPodIntoTenantSeconds.Observe(time.Since(start).Seconds())
 	}()
 	// c.mu.Lock()
 	// check if tenant is valid again to prevent it has been removed
@@ -1293,6 +1315,8 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 	if len(undoList) != 0 || exceptionCnt != 0 {
 		Logger.Warnf("[AutoScaleMeta][resize][addPodIntoTenant][%v] exceptionCnt:%v len(undoList):%v", tenant, exceptionCnt, len(undoList))
 	}
+	MetricOfAddPodSuccessCnt.Add(float64(addCnt - failCnt))
+	MetricOfAddPodFailedCnt.Add(float64(failCnt))
 	// c.setConfigMapStateBatch(statesDeltaMap)
 	return failCnt
 }
@@ -1312,6 +1336,11 @@ func HandleUnassingCase(c *AutoScaleMeta, curtenant string, v *PodDesc, tsContai
 
 // checked
 func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsContainer *TimeSeriesContainer, isPause bool) int {
+	start := time.Now()
+	MetricOfRemovePodFromTenantCnt.Inc()
+	defer func() {
+		MetricOfRemovePodFromTenantSeconds.Observe(time.Since(start).Seconds())
+	}()
 	Logger.Infof("[AutoScaleMeta][resize][removePodFromTenant][%v] %v %v isPause:%v", tenant, removeCnt, tenant, isPause)
 
 	// c.mu.Lock()
@@ -1416,6 +1445,8 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 	}
 	// c.setConfigMapStateBatch(statesDeltaMap)
 	Logger.Debugf("[AutoScaleMeta][resize][removePodFromTenant][%v]done. warmpool.size:%v pods:%v", tenant, c.WarmedPods.GetCntOfPods(), c.WarmedPods.GetPodNames())
+	MetricOfRemovePodSuccessCnt.Add(float64(removeCnt - len(undoList)))
+	MetricOfRemovePodFailedCnt.Add(float64(len(undoList)))
 	return cnt
 }
 
