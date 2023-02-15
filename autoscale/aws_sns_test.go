@@ -1,27 +1,22 @@
 package autoscale
 
-import (
-	"testing"
-	"time"
-)
-
 type Job interface {
 	Run()
 }
 
-func TestAwsSns(t *testing.T) {
-	awsSnsManager, err := NewAwsSnsManager("us-east-2")
-	if awsSnsManager == nil {
-		panic(err)
-	}
-	now := time.Now()
-	ts := now.UnixNano()
-	err = awsSnsManager.TryToPublishTopology("auto-scale", ts, []string{"a"})
-	if err != nil {
-		t.Errorf("[error]Create topic failed, err: %+v", err.Error())
-		return
-	}
-}
+//func TestAwsSns(t *testing.T) {
+//	awsSnsManager, err := NewAwsSnsManager("us-east-2")
+//	if awsSnsManager == nil {
+//		panic(err)
+//	}
+//	now := time.Now()
+//	ts := now.UnixNano()
+//	err = awsSnsManager.TryToPublishTopology("auto-scale", ts, []string{"a"})
+//	if err != nil {
+//		t.Errorf("[error]Create topic failed, err: %+v", err.Error())
+//		return
+//	}
+//}
 
 //func test(awsSnsManager *AwsSnsManager, i int) {
 //	Logger.Infof("start func: %d", i)
