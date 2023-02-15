@@ -5,11 +5,12 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-secrets: inherit
+
 jobs:
   build:
     name: Build Image & Push To ECR
     runs-on: self-hosted
+    environment: CICD
     outputs:
       image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}
     env:
