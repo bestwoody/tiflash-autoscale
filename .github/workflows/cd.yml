@@ -15,7 +15,7 @@ jobs:
     env:
       ECR_REPO: tidbcloud/tiflash-autoscaler
       AWS_ROLE_ARN: ${{ secrets.TIFLASH_COMPUTE_ECR_AWS_ROLE }}
-      AWS_REGION: us-west-2
+      AWS_REGION: us-east-2
       GITHUB_TOKEN: ${{ secrets.GIT_ACTION_BOT }}
     steps:
       - name: Check out Code
@@ -39,6 +39,14 @@ jobs:
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip -q awscliv2.zip
           sudo ./aws/install --update
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1 # More information on this action can be found below in the 'AWS Credentials' section
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
       - name: Login to ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
