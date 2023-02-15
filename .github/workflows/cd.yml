@@ -10,6 +10,9 @@ jobs:
   build:
     name: Build Image & Push To ECR
     runs-on: self-hosted
+    permissions:
+      id-token: write
+      contents: read
     environment: CICD
     outputs:
       image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}
