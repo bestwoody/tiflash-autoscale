@@ -14,7 +14,7 @@ jobs:
       image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}
     env:
       ECR_REPO: tidbcloud/tiflash-autoscaler
-      AWS_ROLE_ARN: ${{ secrets.DBAAS_DEV_AWS_ROLE }}
+      AWS_ROLE_ARN: ${{ secrets.TIFLASH_COMPUTE_ECR_AWS_ROLE }}
       AWS_REGION: us-west-2
       GITHUB_TOKEN: ${{ secrets.GIT_ACTION_BOT }}
     steps:
