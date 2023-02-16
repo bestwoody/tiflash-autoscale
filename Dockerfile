@@ -8,11 +8,6 @@ RUN apk add --no-cache \
     gcc \
     g++
 
-# Install jq for pd-ctl
-# RUN cd / && \
-#     wget https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 -O jq && \
-#     chmod +x jq
-
 RUN mkdir -p /go/src/github.com/tikv/pd
 WORKDIR /go/src/github.com/tikv/pd
 
@@ -24,7 +19,6 @@ RUN GO111MODULE=on go mod download
 
 COPY . .
 
-# RUN make
 RUN GOOS=linux go build -o ./autoscale/autoscale  tools/tiflash-autoscale/main.go 
 
 # FROM alpine:3.5

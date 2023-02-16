@@ -361,7 +361,7 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 					if totalTaskCnt < 1 { //test is zero, since it's a float, "< 1" may be better
 						Logger.Infof("[analyzeTaskLoop][%v]auto pause, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ", tenant.Name, tenant.Name, tenantMetricDesc.MinOfPodTimeseriesSize, now-tenantMetricDesc.MaxOfPodMinTime, autoPauseIntervalSec)
 						c.AsyncPause(tenant.Name)
-						// continue //skip auto scale TODO revert
+						continue //skip auto scale
 					}
 				} else {
 					Logger.Warnf("[analyzeTaskLoop][%v]condition of auto pause haven't not met, tenant: %v MinOfPodTimeseriesSize:%v MinOfMetricInterval:%v AutoPauseIntervalSec:%v   ", tenant.Name,

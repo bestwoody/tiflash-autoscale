@@ -186,6 +186,9 @@ type TenantDesc struct {
 	conf            ConfigOfComputeCluster        /// TODO copy from configManager, reload for each analyze loop
 	refOfLatestConf *ConfigOfComputeClusterHolder /// TODO assign it // DO NOT directly read it ,since it is cocurrently being writed by other thread
 	// conf        TenantConf // TODO use it
+
+	CreatedTime       time.Time
+	PausedSinceWhenTs int64 // since when the tenant is paused, zero means tenant is not paused now
 }
 
 func (c *TenantDesc) Dump() string {
@@ -421,14 +424,24 @@ func (c *TenantDesc) SyncStatePausing() bool {
 func (c *TenantDesc) SyncStatePaused() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.switchState(TenantStatePausing, TenantStatePaused)
+	if c.switchState(TenantStatePausing, TenantStatePaused) {
+		c.PausedSinceWhenTs = time.Now().Unix()
+		return true
+	} else {
+		return false
+	}
 }
 
 // checked
 func (c *TenantDesc) SyncStateResuming() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.switchState(TenantStatePaused, TenantStateResuming)
+	if c.switchState(TenantStatePaused, TenantStateResuming) {
+		c.PausedSinceWhenTs = 0 // reset PausedSinceWhenTs, since state is not paused now
+		return true
+	} else {
+		return false
+	}
 }
 
 // checked
@@ -453,6 +466,13 @@ func (c *TenantDesc) IsStateCorrect() (bool, int32) {
 		return false, TenantStateResumed
 	}
 	return true, atomic.LoadInt32(&c.State)
+}
+
+// checked
+func (c *TenantDesc) IsPaused() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return atomic.LoadInt32(&c.State) == TenantStatePaused && len(c.podMap) == 0
 }
 
 // checked
@@ -1470,20 +1490,25 @@ func (c *AutoScaleMeta) SetupAutoPauseTenantWithState(tenant string, minPods int
 	return c.setupAutoPauseTenantWithStateExtraArgs(tenant, minPods, maxPods, state, true)
 }
 
-// checked
-func (c *AutoScaleMeta) setupAutoPauseTenantWithStateExtraArgs(tenant string, minPods int, maxPods int, state int32, needLock bool) bool {
-	Logger.Infof("[SetupTenant] SetupTenant(%v, %v, %v)", tenant, minPods, maxPods)
+func (c *AutoScaleMeta) putTenantMap(tenant string, v *TenantDesc, needLock bool) bool {
 	if needLock {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 	}
 	_, ok := c.tenantMap[tenant]
 	if !ok {
-		c.tenantMap[tenant] = NewAutoPauseTenantDescWithState(tenant, minPods, maxPods, state)
+		v.CreatedTime = time.Now()
+		c.tenantMap[tenant] = v
 		return true
 	} else {
 		return false
 	}
+}
+
+// checked
+func (c *AutoScaleMeta) setupAutoPauseTenantWithStateExtraArgs(tenant string, minPods int, maxPods int, state int32, needLock bool) bool {
+	Logger.Infof("[SetupTenant] SetupTenant(%v, %v, %v)", tenant, minPods, maxPods)
+	return c.putTenantMap(tenant, NewAutoPauseTenantDescWithState(tenant, minPods, maxPods, state), needLock)
 }
 
 // checked
@@ -1494,15 +1519,24 @@ func (c *AutoScaleMeta) SetupAutoPauseTenantWithPausedState(tenant string, minPo
 // checked
 func (c *AutoScaleMeta) SetupTenantWithConfig(tenant string, confHolder *ConfigOfComputeClusterHolder, state int32) bool {
 	Logger.Infof("[SetupTenant] SetupTenantWithConfig(%v, %+v)", tenant, confHolder.Config)
+	return c.putTenantMap(tenant, NewTenantDescWithConfigAndState(tenant, confHolder, state), true)
+}
+
+func (c *AutoScaleMeta) TryToRemoveTenant(tenant string) bool {
+	Logger.Infof("[AutoScaleMeta] TryToRemoveTenant(%v)", tenant)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	_, ok := c.tenantMap[tenant]
+	v, ok := c.tenantMap[tenant]
 	if !ok {
-		c.tenantMap[tenant] = NewTenantDescWithConfigAndState(tenant, confHolder, state)
-		return true
-	} else {
-		return false
+		if v.IsPaused() {
+			delete(c.tenantMap, tenant)
+			return true
+		} else {
+			state, cntOfPod := v.GetStateAndCntOfPods()
+			Logger.Warnf("[AutoScaleMeta] TryToRemoveTenant fail, tenant not paused, tenant:%v, state:%v, cntOfPod:%v", tenant, TenantState2String(state), cntOfPod)
+		}
 	}
+	return false
 }
 
 // checked
