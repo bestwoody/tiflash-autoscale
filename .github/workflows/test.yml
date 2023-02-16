@@ -1,4 +1,4 @@
-name: TiFlash Autoscale Test
+name: Test
 on:
   push:
     branches:
@@ -21,7 +21,7 @@ jobs:
       - run: go build tools/tiflash-autoscale/main.go
 
   ut:
-    name: TiFlash Autoscale Unit Tests
+    name: Unit Tests
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
