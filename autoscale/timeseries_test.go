@@ -1,10 +1,16 @@
 package autoscale
 
 import (
+	"container/list"
 	"github.com/stretchr/testify/assert"
 	"math"
 	"testing"
 )
+
+func assertEqualFloat(t *testing.T, a float64, b float64) {
+	eps := 0.0000001
+	assert.True(t, math.Abs(a-b) < eps)
+}
 
 func TestAvgSigma(t *testing.T) {
 	var avgSigma1 AvgSigma
@@ -63,12 +69,10 @@ func TestAvgSigma(t *testing.T) {
 	avgSigmaArray1 := []AvgSigma{avgSigma1, avgSigma2}
 	avgSigmaArray2 := []AvgSigma{avgSigma3, avgSigma4}
 
-	eps := 0.0000001
 	Merge(avgSigmaArray1, avgSigmaArray2)
 	assertEqual(t, avgSigmaArray1[0].Cnt(), int64(7))
 	assertEqual(t, avgSigmaArray1[0].Sum(), 46.0)
-	floatEqual := math.Abs(avgSigmaArray1[0].Avg()-6.571428571428571) < eps
-	assert.True(t, floatEqual)
+	assertEqualFloat(t, avgSigmaArray1[0].Avg(), 6.571428571428571)
 	assertEqual(t, avgSigmaArray1[1].Cnt(), int64(4))
 	assertEqual(t, avgSigmaArray1[1].Sum(), 26.0)
 	assertEqual(t, avgSigmaArray1[1].Avg(), 6.5)
@@ -77,8 +81,7 @@ func TestAvgSigma(t *testing.T) {
 	assertEqual(t, temp[0], 0.0)
 	assertEqual(t, temp[1], 0.0)
 	assertEqual(t, temp[2], 0.0)
-	floatEqual = math.Abs(temp[3]-6.571428571428571) < eps
-	assert.True(t, floatEqual)
+	assertEqualFloat(t, temp[3], 6.571428571428571)
 	assertEqual(t, temp[4], 6.5)
 
 	arr := []float64{1000.0, 2.0}
@@ -91,9 +94,46 @@ func TestAvgSigma(t *testing.T) {
 	assertEqual(t, avgSigmaArray1[1].Avg(), 5.6)
 }
 
-// TODO
 func TestSimpleTimeSeries(t *testing.T) {
-	assert.True(t, true)
+	cfgIntervalSec := 2
+	simpleTimeSeries := &SimpleTimeSeries{
+		series:      list.New(),
+		Statistics:  make([]AvgSigma, CapacityOfStaticsAvgSigma),
+		cap:         computeSeriesCapBasedOnIntervalSec(cfgIntervalSec),
+		intervalSec: cfgIntervalSec,
+	}
+	simpleTimeSeries.append(1000, []float64{1.0, 1.0})
+	simpleTimeSeries.append(2000, []float64{2.0, 3.0})
+
+	minActual, maxActual := simpleTimeSeries.getMinMaxTime()
+	assertEqual(t, simpleTimeSeries.Statistics[0].Cnt(), int64(1))
+	assertEqual(t, simpleTimeSeries.Statistics[0].Sum(), 2.0)
+	assertEqual(t, simpleTimeSeries.Statistics[1].Cnt(), int64(1))
+	assertEqual(t, simpleTimeSeries.Statistics[1].Sum(), 3.0)
+	assertEqual(t, simpleTimeSeries.series.Len(), 1)
+	assertEqual(t, minActual, int64(2000))
+	assertEqual(t, maxActual, int64(2000))
+
+	simpleTimeSeries.intervalSec = 30
+	simpleTimeSeries.cap = computeSeriesCapBasedOnIntervalSec(simpleTimeSeries.intervalSec)
+	assertEqual(t, simpleTimeSeries.cap, 3)
+	simpleTimeSeries.append(3000, []float64{3.0, 4.0})
+	simpleTimeSeries.append(4000, []float64{4.0, 5.0})
+	simpleTimeSeries.append(5000, []float64{5.0, 6.0})
+	assertEqual(t, simpleTimeSeries.Statistics[0].Cnt(), int64(1))
+	assertEqual(t, simpleTimeSeries.Statistics[0].Sum(), 5.0)
+	assertEqual(t, simpleTimeSeries.Statistics[1].Cnt(), int64(1))
+	assertEqual(t, simpleTimeSeries.Statistics[1].Sum(), 6.0)
+	assertEqual(t, simpleTimeSeries.series.Len(), 1)
+
+	simpleTimeSeries.append(5001, []float64{6.0, 7.0})
+	simpleTimeSeries.append(5002, []float64{7.0, 8.0})
+	simpleTimeSeries.append(5003, []float64{8.0, 9.0})
+	assertEqual(t, simpleTimeSeries.series.Len(), 3)
+	simpleTimeSeries.append(5004, []float64{9.0, 10.0})
+	assertEqual(t, simpleTimeSeries.series.Len(), 3)
+	assertEqual(t, simpleTimeSeries.Statistics[0].Sum(), 24.0)
+	assertEqual(t, simpleTimeSeries.Statistics[1].Sum(), 27.0)
 }
 
 // TODO
