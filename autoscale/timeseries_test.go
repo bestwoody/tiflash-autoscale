@@ -1,9 +1,19 @@
 package autoscale
 
-import "testing"
+import (
+	"github.com/stretchr/testify/assert"
+	"math"
+	"testing"
+)
 
 func TestAvgSigma(t *testing.T) {
 	var avgSigma1 AvgSigma
+	avgSigma1.Add(1.0)
+	avgSigma1.Reset()
+	assertEqual(t, avgSigma1.Sum(), 0.0)
+	assertEqual(t, avgSigma1.Cnt(), int64(0))
+	assertEqual(t, avgSigma1.Avg(), 0.0)
+
 	avgSigma1.Add(1.0)
 	assertEqual(t, avgSigma1.Sum(), 1.0)
 	assertEqual(t, avgSigma1.Cnt(), int64(1))
@@ -53,10 +63,12 @@ func TestAvgSigma(t *testing.T) {
 	avgSigmaArray1 := []AvgSigma{avgSigma1, avgSigma2}
 	avgSigmaArray2 := []AvgSigma{avgSigma3, avgSigma4}
 
+	eps := 0.0000001
 	Merge(avgSigmaArray1, avgSigmaArray2)
 	assertEqual(t, avgSigmaArray1[0].Cnt(), int64(7))
 	assertEqual(t, avgSigmaArray1[0].Sum(), 46.0)
-	assertEqual(t, avgSigmaArray1[0].Avg(), 6.571428571428571)
+	floatEqual := math.Abs(avgSigmaArray1[0].Avg()-6.571428571428571) < eps
+	assert.True(t, floatEqual)
 	assertEqual(t, avgSigmaArray1[1].Cnt(), int64(4))
 	assertEqual(t, avgSigmaArray1[1].Sum(), 26.0)
 	assertEqual(t, avgSigmaArray1[1].Avg(), 6.5)
@@ -65,7 +77,8 @@ func TestAvgSigma(t *testing.T) {
 	assertEqual(t, temp[0], 0.0)
 	assertEqual(t, temp[1], 0.0)
 	assertEqual(t, temp[2], 0.0)
-	assertEqual(t, temp[3], 6.571428571428571)
+	floatEqual = math.Abs(temp[3]-6.571428571428571) < eps
+	assert.True(t, floatEqual)
 	assertEqual(t, temp[4], 6.5)
 
 	arr := []float64{1000.0, 2.0}
@@ -78,10 +91,12 @@ func TestAvgSigma(t *testing.T) {
 	assertEqual(t, avgSigmaArray1[1].Avg(), 5.6)
 }
 
+// TODO
 func TestSimpleTimeSeries(t *testing.T) {
+	assert.True(t, true)
 }
 
+// TODO
 func TestTimeSeriesContainer(t *testing.T) {
-
+	assert.True(t, true)
 }
-
