@@ -1,4 +1,27 @@
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autoscaler-config
+  namespace: tiflash-autoscale
+data:
+  autoscaler.yml: |
+    compute_clusters:
+      - id: 2v1zeQPnTgQ3a6U
+        min_cores: 16
+        max_cores: 32
+        init_cores: 16
+        cpu_lowerlimit: 0.4
+        cpu_upperlimit: 0.8
+        region: ap-southeast-1
+      - id: 1379661944642654175
+        min_cores: 16
+        max_cores: 32
+        init_cores: 16
+        cpu_lowerlimit: 0.4
+        cpu_upperlimit: 0.8
+        region: ap-southeast-1
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: tiflash-autoscale-lb
@@ -72,6 +95,7 @@ spec:
         - "-default-autoscale-intervalsec=60"
         - "-default-min-pods=1"
         - "-default-max-pods=4"
+        - "-config=/etc/autoscale/autoscaler.yml"
         # resources:
         #   limits:
         #     cpu: "1"
@@ -107,3 +131,10 @@ spec:
           value: "false"
         - name: TIFLASH_AS_REGION
           value: "us-east-1"
+        volumeMounts:
+        - mountPath: "/etc/autoscale"
+          name: autoscaler-config
+      volumes:
+      - name: autoscaler-config
+        configMap:
+          name: autoscaler-config

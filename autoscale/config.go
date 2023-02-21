@@ -3,6 +3,12 @@ package autoscale
 import (
 	"fmt"
 	"sync"
+
+	"gopkg.in/yaml.v3"
+)
+
+var (
+	YamlFilePath = ""
 )
 
 type ConfigManager struct {
@@ -145,4 +151,90 @@ type ConfigOfTiDB struct {
 	StatusAddr string
 
 	Zone string
+}
+
+type YamlClusterConfig struct {
+	Id               string  `yaml:"id"`
+	Region           string  `yaml:"region"`
+	MinCores         int     `yaml:"min_cores,omitempty"`
+	MaxCores         int     `yaml:"max_cores,omitempty"`
+	InitCores        int     `yaml:"init_cores,omitempty"`
+	WindowSeconds    int     `yaml:"window_seconds,omitempty"`
+	AutoPauseSeconds int     `yaml:"autopause_seconds,omitempty"`
+	CpuLowerLimit    float64 `yaml:"cpu_lowerlimit,omitempty"`
+	CpuUpperLimit    float64 `yaml:"cpu_upperlimit,omitempty"`
+	Pd               string  `yaml:"pd,omitempty"`
+}
+
+func (cur *YamlClusterConfig) checkAndFillEmptyFields(defaultConfig *YamlClusterConfig) {
+	if cur.MinCores == 0 {
+		cur.MinCores = defaultConfig.MinCores
+	}
+	if cur.MaxCores == 0 {
+		cur.MaxCores = defaultConfig.MaxCores
+	}
+	if cur.InitCores == 0 {
+		cur.InitCores = defaultConfig.InitCores
+	}
+	if cur.WindowSeconds == 0 {
+		cur.WindowSeconds = defaultConfig.WindowSeconds
+	}
+	if cur.AutoPauseSeconds == 0 {
+		cur.AutoPauseSeconds = defaultConfig.AutoPauseSeconds
+	}
+	if cur.CpuLowerLimit == 0 {
+		cur.CpuLowerLimit = defaultConfig.CpuLowerLimit
+	}
+	if cur.CpuUpperLimit == 0 {
+		cur.CpuUpperLimit = defaultConfig.CpuUpperLimit
+	}
+	if cur.Pd == "" {
+		cur.Pd = defaultConfig.Pd
+	}
+}
+
+type YamlConfig struct {
+	ComputeClusters []YamlClusterConfig `yaml:"compute_clusters,flow"`
+}
+
+func NewYamlClusterConfigWithoutId(minCores int, maxCores int, initCores int,
+	windowSeconds int, autoPauseSeconds int,
+	cpuLowerLimit float64, cpuUpperLimit float64, pd string) YamlClusterConfig {
+	return YamlClusterConfig{
+		MinCores:         minCores,
+		MaxCores:         maxCores,
+		InitCores:        initCores,
+		WindowSeconds:    windowSeconds,
+		AutoPauseSeconds: autoPauseSeconds,
+		CpuLowerLimit:    cpuLowerLimit,
+		CpuUpperLimit:    cpuUpperLimit,
+		Pd:               pd,
+	}
+}
+
+func LoadYamlConfig(dataByte []byte, defaultConfig *YamlClusterConfig) YamlConfig {
+	var yamlConfig YamlConfig
+	err := yaml.Unmarshal(dataByte, &yamlConfig)
+	if err != nil {
+		panic(err)
+	}
+	for i := range yamlConfig.ComputeClusters {
+		yamlConfig.ComputeClusters[i].checkAndFillEmptyFields(defaultConfig)
+		// fmt.Printf("%+v\n", yamlConfig.TiDBClusters[i])
+	}
+	return yamlConfig
+}
+
+func (c *YamlConfig) FilterRegion(desiredRegion string) YamlConfig {
+	ret := YamlConfig{
+		ComputeClusters: make([]YamlClusterConfig, 0, len(c.ComputeClusters)),
+	}
+	for i := range c.ComputeClusters {
+		if c.ComputeClusters[i].Region != "" && c.ComputeClusters[i].Region != desiredRegion {
+			continue
+		}
+		ret.ComputeClusters = append(ret.ComputeClusters, c.ComputeClusters[i])
+		// fmt.Printf("%+v\n", c.TiDBClusters[i])
+	}
+	return ret
 }

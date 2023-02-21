@@ -447,6 +447,7 @@ func main() {
 	flag.IntVar(&autoscale.DefaultScaleIntervalSeconds, "default-autoscale-intervalsec", autoscale.DefaultScaleIntervalSeconds, "DefaultScaleIntervalSeconds")
 	flag.IntVar(&autoscale.HardCodeMaxScaleIntervalSecOfCfg, "maxscale-intervalsec-of-cfg", autoscale.HardCodeMaxScaleIntervalSecOfCfg, "HardCodeMaxScaleIntervalSecOfCfg")
 	flag.StringVar(&autoscale.ReadNodeLogUploadS3Bucket, "s3-bucket-for-readnode-log", autoscale.ReadNodeLogUploadS3Bucket, "ReadNodeUpdateS3Bucket")
+	flag.StringVar(&autoscale.YamlFilePath, "config", "", "path of config file")
 	flag.BoolVar(&autoscale.UseSpecialTenantAsFixPool, "use-special-tenant-as-fixpool", autoscale.UseSpecialTenantAsFixPool, "UseSpecialTenantAsFixPool")
 
 	flag.Parse()
@@ -461,6 +462,26 @@ func main() {
 	autoscale.Logger.Infof("[config]DefaultAutoPauseIntervalSeconds: %v", autoscale.DefaultAutoPauseIntervalSeconds)
 	autoscale.Logger.Infof("[config]DefaultScaleIntervalSeconds: %v", autoscale.DefaultScaleIntervalSeconds)
 	autoscale.Logger.Infof("[config]HardCodeMaxScaleIntervalSecOfCfg: %v", autoscale.HardCodeMaxScaleIntervalSecOfCfg)
+
+	var yamlConfig autoscale.YamlConfig
+	if autoscale.YamlFilePath != "" {
+		data1, err := os.ReadFile(autoscale.YamlFilePath)
+		if err != nil {
+			panic(err)
+		}
+		defaultYamlClusterConfig := &autoscale.YamlClusterConfig{
+			MinCores:         autoscale.DefaultMinCntOfPod * autoscale.DefaultCoreOfPod,
+			MaxCores:         autoscale.DefaultMaxCntOfPod * autoscale.DefaultCoreOfPod,
+			InitCores:        autoscale.DefaultMinCntOfPod * autoscale.DefaultCoreOfPod,
+			WindowSeconds:    autoscale.DefaultScaleIntervalSeconds,
+			AutoPauseSeconds: autoscale.DefaultAutoPauseIntervalSeconds,
+			CpuLowerLimit:    autoscale.DefaultLowerLimit,
+			CpuUpperLimit:    autoscale.DefaultUpperLimit,
+			Pd:               autoscale.HardCodeEnvPdAddr,
+		}
+		yamlConfig = autoscale.LoadYamlConfig(data1, defaultYamlClusterConfig)
+		yamlConfig = yamlConfig.FilterRegion(autoscale.EnvRegion)
+	}
 
 	if autoscale.DefaultAutoPauseIntervalSeconds == 0 {
 		panic("DefaultAutoPauseIntervalSeconds is zero!")
