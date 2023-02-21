@@ -144,14 +144,8 @@ func TestTimeSeriesContainer(t *testing.T) {
 	}
 
 	container := NewTimeSeriesContainer(client)
-	for i := 0; i < 2; i++ {
-		var metricsTopic MetricsTopic
-		if i == 0 {
-			metricsTopic = MetricsTopicCpu
-		} else {
-			metricsTopic = MetricsTopicTaskCnt
-		}
-
+	metricsTopicArr := []MetricsTopic{MetricsTopicCpu, MetricsTopicTaskCnt}
+	for _, metricsTopic := range metricsTopicArr {
 		container.InsertWithUserCfg("test", 1, []float64{2.0, 0.0}, 1, metricsTopic)
 		container.InsertWithUserCfg("test", 2, []float64{3.0, 0.0}, 1, metricsTopic)
 		avgSigma, descOfPodTimeSeries := container.GetStatisticsOfPod("test", metricsTopic)
