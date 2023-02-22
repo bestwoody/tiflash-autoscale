@@ -3,6 +3,7 @@ package autoscale
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -12,8 +13,29 @@ var (
 )
 
 type ConfigManager struct {
-	configMap map[string]*ConfigOfComputeCluster
+	configMap map[string]*ConfigOfComputeClusterHolder
 	mu        sync.Mutex
+}
+
+func NewConfigManager(yamlConfig *YamlConfig) *ConfigManager {
+	ret := &ConfigManager{
+		configMap: make(map[string]*ConfigOfComputeClusterHolder),
+	}
+	if yamlConfig != nil {
+		for i := range yamlConfig.ComputeClusters {
+			ret.configMap[yamlConfig.ComputeClusters[i].Id] = &ConfigOfComputeClusterHolder{
+				Config: yamlConfig.ComputeClusters[i].ToConfigOfCompputeCluster(),
+			}
+		}
+	}
+
+	return ret
+}
+
+func (c *ConfigManager) GetConfig(tenant string) *ConfigOfComputeClusterHolder {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.configMap[tenant]
 }
 
 // auto: on/off  resume: on/off
@@ -67,6 +89,12 @@ type ConfigOfComputeClusterHolder struct {
 	mu     sync.Mutex
 }
 
+func (c *ConfigOfComputeClusterHolder) ToString() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Config.Dump()
+}
+
 func (c *ConfigOfComputeClusterHolder) HasChanged(oldTs int64) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -83,7 +111,7 @@ func (c *ConfigOfComputeClusterHolder) DeepCopy() ConfigOfComputeCluster {
 type ConfigOfTiDBCluster struct {
 	Name    string // TiDBCluster 的全局唯一 ID
 	Version string
-	PD      *ConfigOfPD
+	PD      *ConfigOfPD // TODO make it usable!!!
 	// TiDB    []*ConfigOfTiDB
 
 	// all fields below may be useless
@@ -109,7 +137,7 @@ type CustomScaleRule struct {
 
 }
 
-func NewCpuScaleRule(minPercent int, maxPerent int, title string) *CustomScaleRule {
+func NewCpuScaleRule(minPercent float64, maxPerent float64, title string) *CustomScaleRule {
 	if maxPerent <= minPercent {
 		Logger.Errorf("invalid params: maxPerent <= minPercent, title:%v minPercent:%v maxPercent:%v", title, minPercent, maxPerent)
 		return nil
@@ -131,8 +159,8 @@ func (c *CustomScaleRule) Dump() string {
 }
 
 type Threashold struct {
-	Min int
-	Max int
+	Min float64
+	Max float64
 }
 
 func (c *Threashold) Dump() string {
@@ -225,16 +253,38 @@ func LoadYamlConfig(dataByte []byte, defaultConfig *YamlClusterConfig) YamlConfi
 	return yamlConfig
 }
 
-func (c *YamlConfig) FilterRegion(desiredRegion string) YamlConfig {
+func (c *YamlConfig) ValidConfig(validRegion string) YamlConfig {
 	ret := YamlConfig{
 		ComputeClusters: make([]YamlClusterConfig, 0, len(c.ComputeClusters)),
 	}
 	for i := range c.ComputeClusters {
-		if c.ComputeClusters[i].Region != "" && c.ComputeClusters[i].Region != desiredRegion {
+		if c.ComputeClusters[i].Id == "" {
+			continue
+		}
+		if c.ComputeClusters[i].Region != "" && c.ComputeClusters[i].Region != validRegion {
 			continue
 		}
 		ret.ComputeClusters = append(ret.ComputeClusters, c.ComputeClusters[i])
 		// fmt.Printf("%+v\n", c.TiDBClusters[i])
 	}
 	return ret
+}
+
+func (c *YamlClusterConfig) ToConfigOfCompputeCluster() ConfigOfComputeCluster {
+	return ConfigOfComputeCluster{
+		Disabled:                 false,
+		AutoPauseIntervalSeconds: c.AutoPauseSeconds, // if 0 means ManualPause
+		MinCores:                 c.MinCores,
+		MaxCores:                 c.MaxCores,
+		InitCores:                c.InitCores,
+		WindowSeconds:            c.WindowSeconds,
+		CpuScaleRules:            NewCpuScaleRule(c.CpuLowerLimit*100, c.CpuUpperLimit*100, "ToConfigOfCompputeCluster"),
+		ConfigOfTiDBCluster: &ConfigOfTiDBCluster{ // triger when modified: instantly reload compute pod's config  TODO handle version change case
+			Name: c.Id,
+			PD: &ConfigOfPD{
+				Addr: c.Pd,
+			},
+		},
+		LastModifiedTs: time.Now().UnixNano(),
+	}
 }

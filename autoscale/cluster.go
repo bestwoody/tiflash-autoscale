@@ -96,6 +96,7 @@ type ClusterManager struct {
 	SnsManager    *AwsSnsManager
 	PromClient    *PromClient
 	AutoScaleMeta *AutoScaleMeta
+	ConfigManager *ConfigManager
 	K8sCli        *kubernetes.Clientset
 	MetricsCli    *metricsv.Clientset
 	Cli           *kruiseclientset.Clientset
@@ -969,7 +970,7 @@ func initK8sEnv(Namespace string) (config *restclient.Config, K8sCli *kubernetes
 }
 
 // checked
-func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
+func NewClusterManager(region string, isSnsEnabled bool, yamlConfig *YamlConfig) *ClusterManager {
 	namespace := AutoScaleNamespace
 	k8sConfig, K8sCli, MetricsCli, Cli := initK8sEnv(namespace)
 	var snsManager *AwsSnsManager
@@ -984,13 +985,15 @@ func NewClusterManager(region string, isSnsEnabled bool) *ClusterManager {
 	if err != nil {
 		panic(err)
 	}
+	configManager := NewConfigManager(yamlConfig)
 	ret := &ClusterManager{
 		Namespace:     namespace,
 		CloneSetName:  ReadNodeCloneSetName,
 		SnsManager:    snsManager,
 		PromClient:    promCli,
-		AutoScaleMeta: NewAutoScaleMeta(k8sConfig),
-		tsContainer:   NewTimeSeriesContainer(promCli),
+		ConfigManager: configManager,
+		AutoScaleMeta: NewAutoScaleMeta(k8sConfig, configManager),
+		tsContainer:   NewTimeSeriesContainer(),
 		lstTsMap:      make(map[string]int64),
 
 		K8sCli:                 K8sCli,

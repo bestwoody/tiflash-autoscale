@@ -49,7 +49,7 @@ compute_clusters:
 	assertEqual(t, yamlConfig.ComputeClusters[1].CpuUpperLimit, defaultConfig.CpuUpperLimit)
 	assertEqual(t, yamlConfig.ComputeClusters[1].Pd, defaultConfig.Pd)
 
-	yamlConfig1 := yamlConfig.FilterRegion("123")
+	yamlConfig1 := yamlConfig.ValidConfig("123")
 	assertEqual(t, len(yamlConfig1.ComputeClusters), 1)
 	assertEqual(t, yamlConfig1.ComputeClusters[0].Id, "345")
 	assertEqual(t, yamlConfig1.ComputeClusters[0].MinCores, defaultConfig.MinCores)
@@ -61,7 +61,7 @@ compute_clusters:
 	assertEqual(t, yamlConfig1.ComputeClusters[0].CpuUpperLimit, defaultConfig.CpuUpperLimit)
 	assertEqual(t, yamlConfig1.ComputeClusters[0].Pd, defaultConfig.Pd)
 
-	yamlConfig = yamlConfig.FilterRegion("us-west-3")
+	yamlConfig = yamlConfig.ValidConfig("us-west-3")
 	assertEqual(t, len(yamlConfig.ComputeClusters), 2)
 	assertEqual(t, yamlConfig.ComputeClusters[0].Id, "2v1zeQPnTgQ3a6U")
 	assertEqual(t, yamlConfig.ComputeClusters[0].MinCores, 8)

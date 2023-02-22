@@ -480,14 +480,14 @@ func main() {
 			Pd:               autoscale.HardCodeEnvPdAddr,
 		}
 		yamlConfig = autoscale.LoadYamlConfig(data1, defaultYamlClusterConfig)
-		yamlConfig = yamlConfig.FilterRegion(autoscale.EnvRegion)
+		yamlConfig = yamlConfig.ValidConfig(autoscale.EnvRegion)
 	}
 
 	if autoscale.DefaultAutoPauseIntervalSeconds == 0 {
 		panic("DefaultAutoPauseIntervalSeconds is zero!")
 	}
 
-	cm := autoscale.NewClusterManager(autoscale.EnvRegion, isSnsEnabled)
+	cm := autoscale.NewClusterManager(autoscale.EnvRegion, isSnsEnabled, &yamlConfig)
 	autoscale.Cm4Http = cm
 
 	// run http API server
