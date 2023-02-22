@@ -2,9 +2,10 @@ package autoscale
 
 import (
 	"container/list"
-	"github.com/stretchr/testify/assert"
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func assertEqualFloat(t *testing.T, a float64, b float64) {
@@ -13,6 +14,7 @@ func assertEqualFloat(t *testing.T, a float64, b float64) {
 }
 
 func TestAvgSigma(t *testing.T) {
+	InitTestEnv()
 	var avgSigma1 AvgSigma
 	avgSigma1.Add(1.0)
 	avgSigma1.Reset()
@@ -95,6 +97,7 @@ func TestAvgSigma(t *testing.T) {
 }
 
 func TestSimpleTimeSeries(t *testing.T) {
+	InitTestEnv()
 	cfgIntervalSec := 2
 	simpleTimeSeries := &SimpleTimeSeries{
 		series:      list.New(),
@@ -137,13 +140,13 @@ func TestSimpleTimeSeries(t *testing.T) {
 }
 
 func TestTimeSeriesContainer(t *testing.T) {
-	InitZapLogger()
-	client, err := NewPromClientDefault()
-	if err != nil {
-		t.Fatal(err)
-	}
+	InitTestEnv()
+	// client, err := NewPromClientDefault()
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
 
-	container := NewTimeSeriesContainer(client)
+	container := NewTimeSeriesContainer()
 	metricsTopicArr := []MetricsTopic{MetricsTopicCpu, MetricsTopicTaskCnt}
 	for _, metricsTopic := range metricsTopicArr {
 		container.InsertWithUserCfg("test", 1, []float64{2.0, 0.0}, 1, metricsTopic)

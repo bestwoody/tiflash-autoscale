@@ -241,16 +241,16 @@ type TimeSeriesContainer struct {
 	seriesMap        map[string]*SimpleTimeSeries // cpu metric
 	taskCntSeriesMap map[string]*SimpleTimeSeries // task cnt of tiflash metric
 	// defaultCapOfSeries int
-	mu      sync.Mutex
-	promCli *PromClient
+	mu sync.Mutex
+	// promCli *PromClient
 }
 
-func NewTimeSeriesContainer(promCli *PromClient) *TimeSeriesContainer {
+func NewTimeSeriesContainer() *TimeSeriesContainer {
 	return &TimeSeriesContainer{
 		seriesMap:        make(map[string]*SimpleTimeSeries),
 		taskCntSeriesMap: make(map[string]*SimpleTimeSeries),
 		// defaultCapOfSeries: defaultCapOfSeries,
-		promCli: promCli,
+		// promCli: promCli,
 	}
 }
 

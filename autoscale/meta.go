@@ -184,8 +184,7 @@ type TenantDesc struct {
 	ResizeMu sync.Mutex
 
 	conf            ConfigOfComputeCluster        /// TODO copy from configManager, reload for each analyze loop
-	refOfLatestConf *ConfigOfComputeClusterHolder /// TODO assign it // DO NOT directly read it ,since it is cocurrently being writed by other thread
-	// conf        TenantConf // TODO use it
+	refOfLatestConf *ConfigOfComputeClusterHolder // DO NOT directly read it ,since it is cocurrently being writed by other thread
 
 	CreatedTime       time.Time
 	PausedSinceWhenTs int64 // since when the tenant is paused, zero means tenant is not paused now
@@ -208,6 +207,11 @@ func (c *TenantDesc) SortPodsAtStartUp() {
 	if len(c.podList) > 0 {
 		Logger.Infof("[TenantDesc][%v][SortPodsOnStartUp]first.startTime:%v last.startTime:%v", c.Name, c.podList[0].GetStartTimeOfAssign(), c.podList[len(c.podList)-1].GetStartTimeOfAssign())
 	}
+}
+
+func (c *TenantDesc) SetupConfig(confHolder *ConfigOfComputeClusterHolder) {
+	c.refOfLatestConf = confHolder
+	c.TryToReloadConf(true)
 }
 
 // checked
@@ -529,12 +533,11 @@ func NewTenantDescWithConfigAndState(name string, confHolder *ConfigOfComputeClu
 
 func NewTenantDescWithConfig(name string, confHolder *ConfigOfComputeClusterHolder) *TenantDesc {
 	ret := &TenantDesc{
-		Name:            name,
-		podMap:          make(map[string]*PodDesc),
-		podList:         make([]*PodDesc, 0, 64),
-		refOfLatestConf: confHolder,
+		Name:    name,
+		podMap:  make(map[string]*PodDesc),
+		podList: make([]*PodDesc, 0, 64),
 	}
-	ret.TryToReloadConf(true)
+	ret.SetupConfig(confHolder)
 	return ret
 }
 
@@ -680,24 +683,26 @@ type AutoScaleMeta struct {
 	PodDescMap map[string]*PodDesc
 	*PrewarmPool
 
-	k8sCli *kubernetes.Clientset
+	k8sCli        *kubernetes.Clientset
+	configManager *ConfigManager
 	// configMap      *v1.ConfigMap //TODO expire entry of removed pod
 	// cmMutex        sync.Mutex
 	IsRuntimeReady atomic.Bool
 }
 
 // checked
-func NewAutoScaleMeta(config *restclient.Config) *AutoScaleMeta {
-	client, err := kubernetes.NewForConfig(config)
+func NewAutoScaleMeta(k8sConfig *restclient.Config, configManager *ConfigManager) *AutoScaleMeta {
+	client, err := kubernetes.NewForConfig(k8sConfig)
 	if err != nil {
 		panic(err.Error())
 	}
 	ret := &AutoScaleMeta{
 		// Pod2tenant: make(map[string]string),
-		tenantMap:   make(map[string]*TenantDesc),
-		PodDescMap:  make(map[string]*PodDesc),
-		PrewarmPool: NewPrewarmPool(NewAutoPauseTenantDescWithState("", 0, PrewarmPoolCap, TenantStateResumed)),
-		k8sCli:      client,
+		tenantMap:     make(map[string]*TenantDesc),
+		PodDescMap:    make(map[string]*PodDesc),
+		PrewarmPool:   NewPrewarmPool(NewAutoPauseTenantDescWithState("", 0, PrewarmPoolCap, TenantStateResumed)),
+		k8sCli:        client,
+		configManager: configManager,
 	}
 	if UseSpecialTenantAsFixPool {
 		ret.setupManualPauseMockTenant(SpecialTenantNameForFixPool, 1, 1, false, 300, nil)
@@ -1498,6 +1503,13 @@ func (c *AutoScaleMeta) putTenantMap(tenant string, v *TenantDesc, needLock bool
 	_, ok := c.tenantMap[tenant]
 	if !ok {
 		v.CreatedTime = time.Now()
+		if c.configManager != nil {
+			configHolder := c.configManager.GetConfig(tenant)
+			if configHolder != nil {
+				v.SetupConfig(configHolder)
+				Logger.Infof("[putTenantMap]set config, tenant: %v, conf: %v", tenant, configHolder.ToString())
+			}
+		}
 		c.tenantMap[tenant] = v
 		return true
 	} else {
