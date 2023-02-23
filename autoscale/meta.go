@@ -1512,7 +1512,7 @@ func (c *AutoScaleMeta) putTenantMap(tenant string, v *TenantDesc, needLock bool
 				Logger.Infof("[putTenantMap]configHolder is nil! tenant:%v", tenant)
 			}
 		} else {
-			Logger.Infof("[putTenantMap]configManager is nil!")
+			Logger.Infof("[putTenantMap]configManager is nil! tenant:%v", tenant)
 		}
 		c.tenantMap[tenant] = v
 		return true
