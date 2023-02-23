@@ -248,7 +248,7 @@ func LoadYamlConfig(dataByte []byte, defaultConfig *YamlClusterConfig) YamlConfi
 	}
 	for i := range yamlConfig.ComputeClusters {
 		yamlConfig.ComputeClusters[i].checkAndFillEmptyFields(defaultConfig)
-		// fmt.Printf("%+v\n", yamlConfig.TiDBClusters[i])
+		Logger.Infof("[LoadYamlConfig]yamlConfig[%v]: %+v\n", i, yamlConfig.ComputeClusters[i])
 	}
 	return yamlConfig
 }
