@@ -1,12 +1,6 @@
 package autoscale
 
 import (
-	kruiseclientfake "github.com/openkruise/kruise-api/client/clientset/versioned/fake"
-	k8sclientfake "k8s.io/client-go/kubernetes/fake"
-	metricclientfake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
-
-	"k8s.io/client-go/rest"
-	restclient "k8s.io/client-go/rest"
 	"testing"
 )
 
@@ -14,28 +8,20 @@ var (
 	addr = "http://127.0.0.1:8081"
 )
 
-func InitHttpTestEnv() {
-	LogMode = LogModeLocalTest
-	InitZapLogger()
-	RunAutoscaleHttpServer()
-}
-
-func InitK8sTestEnv() (config *restclient.Config, K8sCli *k8sclientfake.Clientset, MetricsCli *metricclientfake.Clientset, Cli *kruiseclientfake.Clientset) {
-	config = &rest.Config{
-		// Set the necessary fields for an in-cluster config
-	}
-	K8sCli = k8sclientfake.NewSimpleClientset()
-
-	MetricsCli = metricclientfake.NewSimpleClientset()
-
-	Cli = kruiseclientfake.NewSimpleClientset()
-	return config, K8sCli, MetricsCli, Cli
-}
-
 func TestHttpServer(t *testing.T) {
+	IsMockK8s = true
 	LogMode = LogModeLocalTest
 	InitZapLogger()
-	RunAutoscaleHttpServer()
+
+	cm := NewClusterManager(EnvRegion, false, nil)
+	Cm4Http = cm
+
+	// run http API server
+	go RunAutoscaleHttpServer()
+
+	// time.Sleep(3600 * time.Second)
+	cm.Wait()
+	cm.Shutdown()
 
 	//go InitHTTPTestEnv()
 

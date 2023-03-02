@@ -97,9 +97,9 @@ type ClusterManager struct {
 	PromClient    *PromClient
 	AutoScaleMeta *AutoScaleMeta
 	ConfigManager *ConfigManager
-	K8sCli        *kubernetes.Clientset
-	MetricsCli    *metricsv.Clientset
-	Cli           *kruiseclientset.Clientset
+	K8sCli        kubernetes.Interface
+	MetricsCli    metricsv.Interface
+	Cli           kruiseclientset.Interface
 	CloneSet      *v1alpha1.CloneSet
 	wg            sync.WaitGroup
 	shutdown      int32 // atomic
@@ -957,36 +957,6 @@ func (c *ClusterManager) checkFixPoolReplicaLoop() {
 }
 
 // checked
-func initK8sEnv(Namespace string) (config *restclient.Config, K8sCli *kubernetes.Clientset, MetricsCli *metricsv.Clientset, Cli *kruiseclientset.Clientset) {
-	config, err := getK8sConfig()
-	if err != nil {
-		panic(err.Error())
-	}
-	MetricsCli, err = metricsv.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-	K8sCli, err = kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-	Cli = kruiseclientset.NewForConfigOrDie(config)
-
-	// create NameSpace if not exsist
-	_, err = K8sCli.CoreV1().Namespaces().Get(context.TODO(), Namespace, metav1.GetOptions{})
-	if err != nil {
-		_, err = K8sCli.CoreV1().Namespaces().Create(context.TODO(), &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: Namespace,
-				Labels: map[string]string{
-					"ns": Namespace,
-				}}}, metav1.CreateOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-	}
-	return config, K8sCli, MetricsCli, Cli
-}
 
 // checked
 func NewClusterManager(region string, isSnsEnabled bool, yamlConfig *YamlConfig) *ClusterManager {
