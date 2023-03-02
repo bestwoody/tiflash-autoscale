@@ -7,16 +7,16 @@ data:
   autoscaler.yml: |
     compute_clusters:
       - id: 2v1zeQPnTgQ3a6U
-        min_cores: 16
-        max_cores: 32
-        init_cores: 16
+        min_cores: 8
+        max_cores: 64
+        init_cores: 32
         cpu_lowerlimit: 0.4
         cpu_upperlimit: 0.8
         region: ap-southeast-1
       - id: 1379661944642654175
-        min_cores: 16
-        max_cores: 32
-        init_cores: 16
+        min_cores: 8
+        max_cores: 64
+        init_cores: 32
         cpu_lowerlimit: 0.4
         cpu_upperlimit: 0.8
         region: ap-southeast-1
