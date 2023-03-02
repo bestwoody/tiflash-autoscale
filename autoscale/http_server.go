@@ -39,6 +39,10 @@ type GetStateResult struct {
 	NumOfRNs  int    `json:"numOfRNs"`
 }
 
+var (
+	HttpServer *http.Server
+)
+
 func (ret *GetStateResult) WriteResp(hasErr int, errInfo string, state string, numOfRNs int) []byte {
 	ret.HasError = hasErr
 	ret.ErrorInfo = errInfo
@@ -351,10 +355,19 @@ func RunAutoscaleHttpServer() {
 	http.HandleFunc("/pause4test", HttpHandlePauseForTest)
 	http.HandleFunc("/sharedfixedpool", SharedFixedPool)
 	http.HandleFunc("/dumpmeta", DumpMeta)
+	HttpServer = &http.Server{Addr: ":8081"}
 
 	Logger.Infof("[HTTP]ListenAndServe 8081")
-	err := http.ListenAndServe(":8081", nil)
+	err := HttpServer.ListenAndServe()
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
+}
+
+func CloseAutoscaleHttpServer() {
+	if HttpServer == nil {
+		return
+	}
+	Logger.Infof("[HTTP]Shut down the server")
+	HttpServer.Shutdown(context.Background())
 }

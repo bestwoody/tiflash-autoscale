@@ -17,6 +17,7 @@ var (
 	podIP       = "127.0.0.1"
 	tenantName  = "test-tenant"
 	tenantName2 = "test-tenant2"
+	pdAddr      = "123.123.123.123"
 
 	// mock variables in server
 	tenantNameInServer atomic.Value
@@ -39,6 +40,7 @@ func (s *server) GetCurrentTenant(ctx context.Context, empty *emptypb.Empty) (*p
 	return &pb.GetTenantResponse{TenantID: tenantNameInServer.Load().(string), IsUnassigning: false}, nil
 }
 
+// If no error is returned, the close function will not be nil.
 func InitRpcTestEnv() (func(), error) {
 	lis, err := net.Listen("tcp", ":"+SupervisorPort)
 	if err != nil {
@@ -67,7 +69,7 @@ func TestAssignAndUnassignTenant(t *testing.T) {
 	assert.NoError(t, err)
 	defer closer()
 
-	assignTenantResult, err := AssignTenantHardCodeArgs(podIP, tenantName)
+	assignTenantResult, err := AssignTenantHardCodeArgs(podIP, tenantName, pdAddr)
 	assert.NoError(t, err)
 	assert.False(t, assignTenantResult.HasErr)
 	assertEqual(t, assignTenantResult.TenantID, tenantName)

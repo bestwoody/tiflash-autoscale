@@ -495,6 +495,7 @@ func main() {
 
 	// run http API server
 	go autoscale.RunAutoscaleHttpServer()
+	defer autoscale.CloseAutoscaleHttpServer()
 	// run grpc API server
 	go autoscale.RunGrpcServer()
 
