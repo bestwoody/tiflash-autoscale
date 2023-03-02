@@ -74,3 +74,15 @@ compute_clusters:
 	assertEqual(t, yamlConfig.ComputeClusters[0].Pd, "172.0.0.1")
 	assertEqual(t, yamlConfig.ComputeClusters[0].Region, "us-west-3")
 }
+
+func TestEmptyYamlConfig(t *testing.T) {
+	InitTestEnv()
+	var data = `
+`
+	defaultConfig := &YamlClusterConfig{
+		MinCores: 4, MaxCores: 16, InitCores: 4, WindowSeconds: 120, AutoPauseSeconds: 121,
+		CpuLowerLimit: 0.2, CpuUpperLimit: 0.7, Pd: "testpdhost"}
+	testByte := []byte(data)
+	yamlConfig := LoadYamlConfig(testByte, defaultConfig)
+	assertEqual(t, len(yamlConfig.ComputeClusters), 0)
+}

@@ -194,6 +194,14 @@ type YamlClusterConfig struct {
 	Pd               string  `yaml:"pd,omitempty"`
 }
 
+func GenerateDefaultPdAddr(tenantId string) string {
+	if OptionRunMode == RunModeDedicated {
+		return fmt.Sprintf("db-pd.tidb%v.svc:2379", tenantId)
+	} else {
+		return HardCodeEnvPdAddr
+	}
+}
+
 func (cur *YamlClusterConfig) checkAndFillEmptyFields(defaultConfig *YamlClusterConfig) {
 	if cur.MinCores == 0 {
 		cur.MinCores = defaultConfig.MinCores
@@ -217,7 +225,12 @@ func (cur *YamlClusterConfig) checkAndFillEmptyFields(defaultConfig *YamlCluster
 		cur.CpuUpperLimit = defaultConfig.CpuUpperLimit
 	}
 	if cur.Pd == "" {
-		cur.Pd = defaultConfig.Pd
+		if OptionRunMode == RunModeDedicated {
+			cur.Pd = GenerateDefaultPdAddr(cur.Id)
+		} else {
+			cur.Pd = defaultConfig.Pd
+		}
+
 	}
 }
 
