@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -428,6 +429,8 @@ func main() {
 		autoscale.OptionRunMode = autoscale.RunModeDedicated
 	} else if envKubeRunMode == "serverless" {
 		autoscale.OptionRunMode = autoscale.RunModeServeless
+	} else {
+		panic(fmt.Sprintf("unknown value of env TIFLASH_AS_KUBE_RUN_MODE: %v, valid options:{local, dedicated, serverless}", envKubeRunMode))
 	}
 	autoscale.EnvRegion = os.Getenv(EnvKeyRegion)
 	isSnsEnabled := true
