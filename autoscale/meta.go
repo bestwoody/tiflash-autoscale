@@ -130,10 +130,10 @@ func (p *PodDesc) GetTenantInfo() (string, int64) {
 }
 
 // checked
-func (c *PodDesc) AssignTenantWithMockConf(tenant string) (resp *supervisor.Result, err error) {
+func (c *PodDesc) AssignTenantWithMockConf(tenant string, pdAddr string) (resp *supervisor.Result, err error) {
 	c.muOfGrpc.Lock()
 	defer c.muOfGrpc.Unlock()
-	return AssignTenantHardCodeArgs(c.IP, tenant)
+	return AssignTenantHardCodeArgs(c.IP, tenant, pdAddr)
 }
 
 // checked
@@ -239,6 +239,18 @@ func (c *TenantDesc) GetInitCntOfPod() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.conf.GetInitCntOfPod()
+}
+
+// checked
+func (c *TenantDesc) GetOrGenDefaultPdAddr() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.conf.ConfigOfTiDBCluster.PD != nil {
+		if c.conf.ConfigOfTiDBCluster.PD.Addr != "" {
+			return c.conf.ConfigOfTiDBCluster.PD.Addr
+		}
+	}
+	return GenerateDefaultPdAddr(c.Name)
 }
 
 // checked
@@ -1192,7 +1204,10 @@ func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodD
 				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false)
 				newTenantDesc, ok = c.tenantMap[tenant]
 			} else {
-				///TODO consider dedicated case
+				///TODO consider dedicated case more specific
+				Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register", tenant)
+				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false)
+				newTenantDesc, ok = c.tenantMap[tenant]
 			}
 		} else {
 			if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless {
@@ -1206,9 +1221,13 @@ func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodD
 				}
 			} else {
 				///TODO consider dedicated case deeper
-				if newTenantDesc.GetState() != TenantStateResumed {
-					Logger.Errorf("[AutoScaleMeta][updateLocalMetaPodOfTenant]unexpected tenant state:%v tenant:%v", TenantState2String(newTenantDesc.GetState()), tenant)
-					newTenantDesc.SetState(TenantStateResumed)
+				if !c.IsRuntimeReady.Load() {
+					newTenantDesc.SetState(TenantStateResumed) // set resumed to let analyzerTask to decide whether to pause or resume in future
+				} else {
+					if newTenantDesc.GetState() != TenantStateResumed {
+						Logger.Errorf("[AutoScaleMeta][updateLocalMetaPodOfTenant]unexpected tenant state:%v tenant:%v", TenantState2String(newTenantDesc.GetState()), tenant)
+						newTenantDesc.SetState(TenantStateResumed)
+					}
 				}
 			}
 		}
@@ -1270,6 +1289,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 			return -1
 		}
 	}
+	pdAddr := tenantDesc.GetOrGenDefaultPdAddr()
 
 	podsToAssign, failCnt := c.PrewarmPool.getWarmedPods(tenant, addCnt)
 	c.mu.Unlock()
@@ -1291,7 +1311,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 		defer v.isStateChanging.Store(false)
 		go func(v *PodDesc) {
 			defer apiWg.Done()
-			resp, err := v.AssignTenantWithMockConf(tenant)
+			resp, err := v.AssignTenantWithMockConf(tenant, pdAddr)
 			localMu.Lock()
 			defer localMu.Unlock()
 			if err != nil || resp.HasErr {

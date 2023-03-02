@@ -22,9 +22,8 @@ var HardCodeEnvTidbStatusAddr string
 var HardCodeEnvPdAddr string
 var HardCodeSupervisorImage string
 
-func AssignTenantHardCodeArgs(podIP string, tenantName string) (resp *supervisor.Result, err error) {
-	/// TODO use tenant specific PdAddr instead of HardCodeEnvPdAddr
-	return AssignTenant(podIP, tenantName, HardCodeEnvTidbStatusAddr, HardCodeEnvPdAddr)
+func AssignTenantHardCodeArgs(podIP string, tenantName string, pdAddr string) (resp *supervisor.Result, err error) {
+	return AssignTenant(podIP, tenantName, HardCodeEnvTidbStatusAddr, pdAddr)
 }
 
 func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr string) (resp *supervisor.Result, err error) {

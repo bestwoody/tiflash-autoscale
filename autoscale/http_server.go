@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"io"
 	"log"
 	"net"
@@ -14,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -129,7 +130,7 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 	flag, currentState, _ := Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 	if !flag {
 		//register new tenant for serveless tier
-		if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless {
+		if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless || OptionRunMode == RunModeDedicated {
 			Cm4Http.AutoScaleMeta.SetupAutoPauseTenantWithPausedState(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod)
 		}
 		flag, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
