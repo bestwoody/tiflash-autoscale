@@ -14,13 +14,13 @@ var (
 	addr = "http://127.0.0.1:8081"
 )
 
-func InitHTTPTestEnv() {
+func InitHttpTestEnv() {
 	LogMode = LogModeLocalTest
 	InitZapLogger()
 	RunAutoscaleHttpServer()
 }
 
-func MockK8sEnv() (config *restclient.Config, K8sCli *k8sclientfake.Clientset, MetricsCli *metricclientfake.Clientset, Cli *kruiseclientfake.Clientset) {
+func InitK8sTestEnv() (config *restclient.Config, K8sCli *k8sclientfake.Clientset, MetricsCli *metricclientfake.Clientset, Cli *kruiseclientfake.Clientset) {
 	config = &rest.Config{
 		// Set the necessary fields for an in-cluster config
 	}
@@ -33,7 +33,10 @@ func MockK8sEnv() (config *restclient.Config, K8sCli *k8sclientfake.Clientset, M
 }
 
 func TestHttpServer(t *testing.T) {
-	MockK8sEnv()
+	LogMode = LogModeLocalTest
+	InitZapLogger()
+	RunAutoscaleHttpServer()
+
 	//go InitHTTPTestEnv()
 
 	// test self-metrics

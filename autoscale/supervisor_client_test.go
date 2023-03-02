@@ -61,7 +61,8 @@ func InitRpcTestEnv() (func(), error) {
 }
 
 func TestAssignAndUnassignTenant(t *testing.T) {
-	InitTestEnv()
+	LogMode = LogModeLocalTest
+	InitZapLogger()
 	closer, err := InitRpcTestEnv()
 	assert.NoError(t, err)
 	defer closer()
