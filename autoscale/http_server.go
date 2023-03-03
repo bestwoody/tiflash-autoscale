@@ -359,7 +359,7 @@ func RunAutoscaleHttpServer() {
 
 	Logger.Infof("[HTTP]ListenAndServe 8081")
 	err := HttpServer.ListenAndServe()
-	if err != nil {
+	if err != nil && err != http.ErrServerClosed {
 		log.Fatal("ListenAndServe: ", err)
 	}
 }
