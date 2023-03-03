@@ -28,24 +28,25 @@ func initK8sEnv(Namespace string) (config *restclient.Config, K8sCli kubernetes.
 		MetricsCli = metricclientfake.NewSimpleClientset()
 
 		Cli = kruiseclientfake.NewSimpleClientset()
-		return config, K8sCli, MetricsCli, Cli
+	} else {
+		var err error
+		config, err = getK8sConfig()
+		if err != nil {
+			panic(err.Error())
+		}
+		MetricsCli, err = metricsv.NewForConfig(config)
+		if err != nil {
+			panic(err.Error())
+		}
+		K8sCli, err = kubernetes.NewForConfig(config)
+		if err != nil {
+			panic(err.Error())
+		}
+		Cli = kruiseclientset.NewForConfigOrDie(config)
 	}
-	config, err := getK8sConfig()
-	if err != nil {
-		panic(err.Error())
-	}
-	MetricsCli, err = metricsv.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-	K8sCli, err = kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-	Cli = kruiseclientset.NewForConfigOrDie(config)
 
 	// create NameSpace if not exsist
-	_, err = K8sCli.CoreV1().Namespaces().Get(context.TODO(), Namespace, metav1.GetOptions{})
+	_, err := K8sCli.CoreV1().Namespaces().Get(context.TODO(), Namespace, metav1.GetOptions{})
 	if err != nil {
 		_, err = K8sCli.CoreV1().Namespaces().Create(context.TODO(), &v1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{

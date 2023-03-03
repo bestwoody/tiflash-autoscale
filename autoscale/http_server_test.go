@@ -2,10 +2,13 @@ package autoscale
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/assert"
 	"io"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	"net/url"
 	"testing"
@@ -21,6 +24,19 @@ func TestHttpServer(t *testing.T) {
 
 	cm := NewClusterManager(EnvRegion, false, nil)
 	Cm4Http = cm
+	readnode1 := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "readnode1",
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{Name: "readnode1", Image: "tiflash:latest", Command: []string{"sleep", "1000"}},
+			},
+		},
+	}
+
+	_, err := cm.K8sCli.CoreV1().Pods(cm.Namespace).Create(context.TODO(), &readnode1, metav1.CreateOptions{})
+	assert.NoError(t, err)
 
 	// run http API server
 	go RunAutoscaleHttpServer()
@@ -28,24 +44,9 @@ func TestHttpServer(t *testing.T) {
 	defer cm.Shutdown()
 
 	// wait for http server start
-	time.Sleep(5 * time.Second)
+	time.Sleep(15 * time.Second)
 
 	var res map[string]interface{}
-
-	// test SharedFixedPool
-	Logger.Infof("[http][test]SharedFixedPool")
-	shareFixedPoolResp, err := http.Get(httpServerAddr + "/sharedfixedpool")
-	assert.NoError(t, err)
-	defer shareFixedPoolResp.Body.Close()
-	assertEqual(t, shareFixedPoolResp.StatusCode, http.StatusOK)
-	data, err := io.ReadAll(shareFixedPoolResp.Body)
-	assert.NoError(t, err)
-	err = json.Unmarshal(data, &res)
-	assert.NoError(t, err)
-	assertEqual(t, res["hasError"].(float64), 0.0)
-	assertEqual(t, res["errorInfo"].(string), "")
-	assertEqual(t, res["state"].(string), "fixpool")
-	assertEqual(t, res["topology"].([]interface{})[0].(string), "serverless-cluster-tiflash-cn-0.serverless-cluster-tiflash-cn-peer.tidb-serverless.svc.cluster.local:3930")
 
 	//test promhttp.Handler
 	Logger.Infof("[http][test]promhttp.Handler")
@@ -53,7 +54,7 @@ func TestHttpServer(t *testing.T) {
 	assert.NoError(t, err)
 	defer selfMetricsResp.Body.Close()
 	assertEqual(t, selfMetricsResp.StatusCode, http.StatusOK)
-	data, err = io.ReadAll(selfMetricsResp.Body)
+	data, err := io.ReadAll(selfMetricsResp.Body)
 	assert.NoError(t, err)
 	reader := bytes.NewReader(data)
 	var parser expfmt.TextParser
@@ -76,7 +77,41 @@ func TestHttpServer(t *testing.T) {
 	// test GetStateServer
 	Logger.Infof("[http][test]GetStateServer")
 	getStateResp, err := http.PostForm(httpServerAddr+"/getstate", url.Values{
-		"tenantName": {"t1"},
+		"tenantName": {"t2"},
+	})
+	assert.NoError(t, err)
+	defer getStateResp.Body.Close()
+	assertEqual(t, getStateResp.StatusCode, http.StatusOK)
+	data, err = io.ReadAll(getStateResp.Body)
+	assert.NoError(t, err)
+	err = json.Unmarshal(data, &res)
+	assert.NoError(t, err)
+	assertEqual(t, res["hasError"].(float64), 0.0)
+	assertEqual(t, res["errorInfo"].(string), "")
+	assertEqual(t, res["state"].(string), "resumed")
+	assertEqual(t, res["numOfRNs"].(float64), 0.0)
+
+	// test HttpHandlePauseForTest
+	Logger.Infof("[http][test]HttpHandlePauseForTest")
+	pause4testResp, err := http.PostForm(httpServerAddr+"/pause4test", url.Values{
+		"tidbclusterid": {"t2"},
+	})
+	assert.NoError(t, err)
+	defer pause4testResp.Body.Close()
+	assertEqual(t, pause4testResp.StatusCode, http.StatusOK)
+	data, err = io.ReadAll(pause4testResp.Body)
+	assert.NoError(t, err)
+	err = json.Unmarshal(data, &res)
+	assert.NoError(t, err)
+	assertEqual(t, res["hasError"].(float64), 0.0)
+	assertEqual(t, res["errorInfo"].(string), "")
+	assertEqual(t, res["state"].(string), "pausing")
+	assertEqual(t, res["topology"], nil)
+
+	// wait for pause
+	time.Sleep(15 * time.Second)
+	getStateResp, err = http.PostForm(httpServerAddr+"/getstate", url.Values{
+		"tenantName": {"t2"},
 	})
 	assert.NoError(t, err)
 	defer getStateResp.Body.Close()
@@ -89,23 +124,6 @@ func TestHttpServer(t *testing.T) {
 	assertEqual(t, res["errorInfo"].(string), "")
 	assertEqual(t, res["state"].(string), "paused")
 	assertEqual(t, res["numOfRNs"].(float64), 0.0)
-
-	// test HttpHandlePauseForTest
-	Logger.Infof("[http][test]HttpHandlePauseForTest")
-	pause4testResp, err := http.PostForm(httpServerAddr+"/pause4test", url.Values{
-		"tidbclusterid": {"t1"},
-	})
-	assert.NoError(t, err)
-	defer pause4testResp.Body.Close()
-	assertEqual(t, pause4testResp.StatusCode, http.StatusOK)
-	data, err = io.ReadAll(pause4testResp.Body)
-	assert.NoError(t, err)
-	err = json.Unmarshal(data, &res)
-	assert.NoError(t, err)
-	assertEqual(t, res["hasError"].(float64), 1.0)
-	assertEqual(t, res["errorInfo"].(string), "pause failed")
-	assertEqual(t, res["state"].(string), "paused")
-	assertEqual(t, res["topology"], nil)
 
 	// test HttpHandleResumeAndGetTopology
 	Logger.Infof("[http][test]HttpHandleResumeAndGetTopology")
@@ -123,6 +141,22 @@ func TestHttpServer(t *testing.T) {
 	assertEqual(t, res["errorInfo"].(string), "resume failed")
 	assertEqual(t, res["state"].(string), "resumed")
 	assertEqual(t, len(res["topology"].([]interface{})), 0)
+
+	// test SharedFixedPool
+	Logger.Infof("[http][test]SharedFixedPool")
+	shareFixedPoolResp, err := http.Get(httpServerAddr + "/sharedfixedpool")
+	assert.NoError(t, err)
+	defer shareFixedPoolResp.Body.Close()
+	assertEqual(t, shareFixedPoolResp.StatusCode, http.StatusOK)
+	data, err = io.ReadAll(shareFixedPoolResp.Body)
+	assert.NoError(t, err)
+	err = json.Unmarshal(data, &res)
+	assert.NoError(t, err)
+	assertEqual(t, res["hasError"].(float64), 0.0)
+	assertEqual(t, res["errorInfo"].(string), "")
+	assertEqual(t, res["state"].(string), "fixpool")
+	assertEqual(t, len(res["topology"].([]interface{})), 1)
+	assertEqual(t, res["topology"].([]interface{})[0].(string), "serverless-cluster-tiflash-cn-0.serverless-cluster-tiflash-cn-peer.tidb-serverless.svc.cluster.local:3930")
 
 	//test DumpMeta
 	Logger.Infof("[http][test]DumpMeta")

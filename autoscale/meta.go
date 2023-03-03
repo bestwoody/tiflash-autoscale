@@ -719,8 +719,11 @@ func NewAutoScaleMeta(k8sConfig *restclient.Config, configManager *ConfigManager
 	if UseSpecialTenantAsFixPool {
 		ret.setupManualPauseMockTenant(SpecialTenantNameForFixPool, 1, 1, false, 300, nil)
 	}
-	if OptionRunMode == RunModeLocal || OptionRunMode == RunModeTest {
+	if OptionRunMode == RunModeLocal {
 		ret.loadTenants4Test()
+	}
+	if OptionRunMode == RunModeTest {
+		ret.loadTenants4HttpTest()
 	}
 	// ret.initConfigMap()
 	return ret
@@ -814,6 +817,10 @@ func (c *AutoScaleMeta) loadTenants4Test() {
 	c.setupAutoPauseMockTenant("t11", 1, 4, false, 300, 120, NewCpuScaleRule(40, 80, "t11"), TenantStateResumed)
 
 	/// TODO load tenants from config of control panel
+}
+
+func (c *AutoScaleMeta) loadTenants4HttpTest() {
+	c.setupManualPauseMockTenant("t2", 1, 4, false, 60, nil) // t2
 }
 
 type TenantInfoProvider interface {
