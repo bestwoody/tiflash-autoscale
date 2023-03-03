@@ -12,13 +12,11 @@ import (
 	"time"
 )
 
-var (
-	addr = "http://127.0.0.1:8081"
-)
-
 func TestHttpServer(t *testing.T) {
+	httpServerAddr := "http://127.0.0.1:8081"
+
 	LogMode = LogModeLocalTest
-	OptionRunMode = RunModeLocal
+	OptionRunMode = RunModeTest
 	InitZapLogger()
 
 	cm := NewClusterManager(EnvRegion, false, nil)
@@ -36,7 +34,7 @@ func TestHttpServer(t *testing.T) {
 
 	// test SharedFixedPool
 	Logger.Infof("[http][test]SharedFixedPool")
-	shareFixedPoolResp, err := http.Get(addr + "/sharedfixedpool")
+	shareFixedPoolResp, err := http.Get(httpServerAddr + "/sharedfixedpool")
 	assert.NoError(t, err)
 	defer shareFixedPoolResp.Body.Close()
 	assertEqual(t, shareFixedPoolResp.StatusCode, http.StatusOK)
@@ -51,7 +49,7 @@ func TestHttpServer(t *testing.T) {
 
 	//test promhttp.Handler
 	Logger.Infof("[http][test]promhttp.Handler")
-	selfMetricsResp, err := http.Get(addr + "/self-metrics")
+	selfMetricsResp, err := http.Get(httpServerAddr + "/self-metrics")
 	assert.NoError(t, err)
 	defer selfMetricsResp.Body.Close()
 	assertEqual(t, selfMetricsResp.StatusCode, http.StatusOK)
@@ -65,7 +63,7 @@ func TestHttpServer(t *testing.T) {
 
 	// test GetMetricsFromNode
 	Logger.Infof("[http][test]GetMetricsFromNode")
-	metricsResp, err := http.PostForm(addr+"/metrics", url.Values{
+	metricsResp, err := http.PostForm(httpServerAddr+"/metrics", url.Values{
 		"node": {""},
 	})
 	assert.NoError(t, err)
@@ -77,7 +75,7 @@ func TestHttpServer(t *testing.T) {
 
 	// test GetStateServer
 	Logger.Infof("[http][test]GetStateServer")
-	getStateResp, err := http.PostForm(addr+"/getstate", url.Values{
+	getStateResp, err := http.PostForm(httpServerAddr+"/getstate", url.Values{
 		"tenantName": {"t1"},
 	})
 	assert.NoError(t, err)
@@ -94,7 +92,7 @@ func TestHttpServer(t *testing.T) {
 
 	// test HttpHandlePauseForTest
 	Logger.Infof("[http][test]HttpHandlePauseForTest")
-	pause4testResp, err := http.PostForm(addr+"/pause4test", url.Values{
+	pause4testResp, err := http.PostForm(httpServerAddr+"/pause4test", url.Values{
 		"tidbclusterid": {"t1"},
 	})
 	assert.NoError(t, err)
@@ -111,7 +109,7 @@ func TestHttpServer(t *testing.T) {
 
 	// test HttpHandleResumeAndGetTopology
 	Logger.Infof("[http][test]HttpHandleResumeAndGetTopology")
-	resumeAndGetTopologyResp, err := http.PostForm(addr+"/resume-and-get-topology", url.Values{
+	resumeAndGetTopologyResp, err := http.PostForm(httpServerAddr+"/resume-and-get-topology", url.Values{
 		"tidbclusterid": {"t2"},
 	})
 	assert.NoError(t, err)
@@ -128,7 +126,7 @@ func TestHttpServer(t *testing.T) {
 
 	//test DumpMeta
 	Logger.Infof("[http][test]DumpMeta")
-	dumpMetaResp, err := http.Get(addr + "/dumpmeta")
+	dumpMetaResp, err := http.Get(httpServerAddr + "/dumpmeta")
 	assert.NoError(t, err)
 	defer dumpMetaResp.Body.Close()
 	assertEqual(t, dumpMetaResp.StatusCode, http.StatusOK)

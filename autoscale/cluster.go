@@ -29,6 +29,7 @@ const (
 	RunModeLocal
 	RunModeDedicated
 	RunModeCustom
+	RunModeTest
 )
 
 const AnnotationKeyOfSupervisorRDVersionn = "tiflash.autoscale.rdversion"
@@ -599,7 +600,7 @@ func (c *ClusterManager) loadPods() string {
 
 // checked
 func (c *ClusterManager) getComputePodAntiAffinity() *v1.PodAntiAffinity {
-	if OptionRunMode == RunModeLocal {
+	if OptionRunMode == RunModeLocal || OptionRunMode == RunModeTest {
 		return nil
 	} else {
 		return &v1.PodAntiAffinity{

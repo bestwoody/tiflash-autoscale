@@ -719,7 +719,7 @@ func NewAutoScaleMeta(k8sConfig *restclient.Config, configManager *ConfigManager
 	if UseSpecialTenantAsFixPool {
 		ret.setupManualPauseMockTenant(SpecialTenantNameForFixPool, 1, 1, false, 300, nil)
 	}
-	if OptionRunMode == RunModeLocal {
+	if OptionRunMode == RunModeLocal || OptionRunMode == RunModeTest {
 		ret.loadTenants4Test()
 	}
 	// ret.initConfigMap()
@@ -1199,7 +1199,7 @@ func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodD
 		newTenantDesc, ok = c.tenantMap[tenant]
 
 		if !ok {
-			if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless {
+			if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless || OptionRunMode == RunModeTest {
 				Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register", tenant)
 				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false)
 				newTenantDesc, ok = c.tenantMap[tenant]
@@ -1210,7 +1210,7 @@ func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodD
 				newTenantDesc, ok = c.tenantMap[tenant]
 			}
 		} else {
-			if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless {
+			if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless || OptionRunMode == RunModeTest {
 				if !c.IsRuntimeReady.Load() {
 					newTenantDesc.SetState(TenantStateResumed) // set resumed to let analyzerTask to decide whether to pause or resume in future
 				} else {

@@ -14,11 +14,6 @@ import (
 )
 
 var (
-	podIP       = "127.0.0.1"
-	tenantName  = "test-tenant"
-	tenantName2 = "test-tenant2"
-	pdAddr      = "123.123.123.123"
-
 	// mock variables in server
 	tenantNameInServer atomic.Value
 )
@@ -63,6 +58,11 @@ func InitRpcTestEnv() (func(), error) {
 }
 
 func TestAssignAndUnassignTenant(t *testing.T) {
+	podIP := "127.0.0.1"
+	tenantName := "test-tenant"
+	tenantName2 := "test-tenant2"
+	pdAddr := "123.123.123.123"
+
 	LogMode = LogModeLocalTest
 	InitZapLogger()
 	closer, err := InitRpcTestEnv()

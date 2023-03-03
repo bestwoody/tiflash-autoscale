@@ -19,7 +19,7 @@ import (
 )
 
 func initK8sEnv(Namespace string) (config *restclient.Config, K8sCli kubernetes.Interface, MetricsCli metricsv.Interface, Cli kruiseclientset.Interface) {
-	if OptionRunMode == RunModeLocal {
+	if OptionRunMode == RunModeTest {
 		config = &rest.Config{
 			// Set the necessary fields for an in-cluster config
 		}
