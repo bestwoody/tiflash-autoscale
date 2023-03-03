@@ -631,6 +631,15 @@ func (c *ClusterManager) getComputePodToleration() []v1.Toleration {
 				Effect:   v1.TaintEffectNoSchedule,
 			},
 		}
+	} else if OptionRunMode == RunModeDedicated {
+		return []v1.Toleration{
+			{
+				Key:      "dedicated",
+				Value:    "elastic-tiflash",
+				Operator: v1.TolerationOpEqual,
+				Effect:   v1.TaintEffectNoSchedule,
+			},
+		}
 	} else {
 		return nil
 	}
@@ -640,6 +649,16 @@ func (c *ClusterManager) createCloneSet(cloneSet v1alpha1.CloneSet) (*v1alpha1.C
 	Logger.Infof("[initK8sComponents]create clonneSet")
 	c.AutoScaleMeta.PrewarmPool.cntOfPending.Add(*cloneSet.Spec.Replicas)
 	return c.Cli.AppsV1alpha1().CloneSets(c.Namespace).Create(context.TODO(), &cloneSet, metav1.CreateOptions{})
+}
+
+func (c *ClusterManager) getSupervisorRdVersion() string {
+	if OptionRunMode == RunModeServeless {
+		return "1"
+	} else if OptionRunMode == RunModeDedicated { //dedicated tier
+		return "0"
+	} else {
+		return "1"
+	}
 }
 
 // checked
@@ -666,7 +685,7 @@ func (c *ClusterManager) initK8sComponents() {
 				"app": c.CloneSetName,
 			},
 			Annotations: map[string]string{
-				AnnotationKeyOfSupervisorRDVersionn: "1",
+				AnnotationKeyOfSupervisorRDVersionn: c.getSupervisorRdVersion(),
 			},
 		},
 		Spec: v1alpha1.CloneSetSpec{
