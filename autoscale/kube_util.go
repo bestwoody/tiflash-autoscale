@@ -18,12 +18,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-var (
-	IsMockK8s = false
-)
-
 func initK8sEnv(Namespace string) (config *restclient.Config, K8sCli kubernetes.Interface, MetricsCli metricsv.Interface, Cli kruiseclientset.Interface) {
-	if IsMockK8s {
+	if OptionRunMode == RunModeLocal {
 		config = &rest.Config{
 			// Set the necessary fields for an in-cluster config
 		}
