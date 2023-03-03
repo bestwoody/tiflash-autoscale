@@ -112,7 +112,7 @@ func TestHttpServer(t *testing.T) {
 	// test HttpHandleResumeAndGetTopology
 	Logger.Infof("[http][test]HttpHandleResumeAndGetTopology")
 	resumeAndGetTopologyResp, err := http.PostForm(addr+"/resume-and-get-topology", url.Values{
-		"tidbclusterid": {"t1"},
+		"tidbclusterid": {"t2"},
 	})
 	assert.NoError(t, err)
 	defer resumeAndGetTopologyResp.Body.Close()
@@ -134,6 +134,5 @@ func TestHttpServer(t *testing.T) {
 	assertEqual(t, dumpMetaResp.StatusCode, http.StatusOK)
 	data, err = io.ReadAll(dumpMetaResp.Body)
 	assert.NoError(t, err)
-	print(string(data))
 
 }
