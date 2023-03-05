@@ -588,7 +588,6 @@ func (c *ClusterManager) loadPods() string {
 		panic(err)
 		// return ""
 	}
-	Logger.Infof("[loadPodsAtStartup] load pods, cnt:%v", len(pods.Items))
 	resVer := pods.ListMeta.ResourceVersion
 	podSet := make(map[string]bool)
 	for _, pod := range pods.Items {

@@ -12,10 +12,13 @@ import (
 
 const (
 	SupervisorPort         string = "7000"
-	IsSupClientMock        bool   = false
 	GrpcCommonTimeOutSec          = 10
 	GrpcAssignTimeOutSec          = 120
 	GrpcUnassignTimeOutSec        = 120
+)
+
+var (
+	IsSupClientMock = false
 )
 
 var HardCodeEnvTidbStatusAddr string

@@ -20,6 +20,7 @@ func TestHttpServer(t *testing.T) {
 
 	LogMode = LogModeLocalTest
 	OptionRunMode = RunModeTest
+	IsSupClientMock = true
 	InitZapLogger()
 
 	cm := NewClusterManager(EnvRegion, false, nil)
@@ -30,10 +31,11 @@ func TestHttpServer(t *testing.T) {
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
-				{Name: "readnode1", Image: "tiflash:latest", Command: []string{"sleep", "1000"}},
+				{Name: "readnode1", Image: "test", Command: []string{"sleep", "1000"}},
 			},
 		},
 	}
+	readnode1.Status.PodIP = "127.0.0.1"
 
 	_, err := cm.K8sCli.CoreV1().Pods(cm.Namespace).Create(context.TODO(), &readnode1, metav1.CreateOptions{})
 	assert.NoError(t, err)
@@ -89,7 +91,7 @@ func TestHttpServer(t *testing.T) {
 	assertEqual(t, res["hasError"].(float64), 0.0)
 	assertEqual(t, res["errorInfo"].(string), "")
 	assertEqual(t, res["state"].(string), "resumed")
-	assertEqual(t, res["numOfRNs"].(float64), 0.0)
+	assertEqual(t, res["numOfRNs"].(float64), 1.0)
 
 	// test HttpHandlePauseForTest
 	Logger.Infof("[http][test]HttpHandlePauseForTest")
@@ -137,10 +139,10 @@ func TestHttpServer(t *testing.T) {
 	assert.NoError(t, err)
 	err = json.Unmarshal(data, &res)
 	assert.NoError(t, err)
-	assertEqual(t, res["hasError"].(float64), 1.0)
-	assertEqual(t, res["errorInfo"].(string), "resume failed")
+	assertEqual(t, res["hasError"].(float64), 0.0)
+	assertEqual(t, res["errorInfo"].(string), "")
 	assertEqual(t, res["state"].(string), "resumed")
-	assertEqual(t, len(res["topology"].([]interface{})), 0)
+	assertEqual(t, res["topology"].([]interface{})[0].(string), "127.0.0.1:3930")
 
 	// test SharedFixedPool
 	Logger.Infof("[http][test]SharedFixedPool")
