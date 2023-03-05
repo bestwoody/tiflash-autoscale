@@ -58,6 +58,7 @@ func InitRpcTestEnv() (func(), error) {
 }
 
 func TestAssignAndUnassignTenant(t *testing.T) {
+	IsSupClientMock = false
 	podIP := "127.0.0.1"
 	tenantName := "test-tenant"
 	tenantName2 := "test-tenant2"
