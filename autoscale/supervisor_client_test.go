@@ -11,38 +11,43 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
-var (
+type FakeAssignServer struct {
 	// mock variables in server
-	tenantNameInServer atomic.Value
-)
-
-func (s *server) AssignTenant(ctx context.Context, in *pb.AssignRequest) (*pb.Result, error) {
-	tenantNameInServer.Store(in.GetTenantID())
-	return &pb.Result{HasErr: false, ErrInfo: "", TenantID: tenantNameInServer.Load().(string), IsUnassigning: false}, nil
+	tenantName    atomic.Value
+	isTimeoutCase bool
 }
 
-func (s *server) UnassignTenant(ctx context.Context, in *pb.UnassignRequest) (*pb.Result, error) {
-	if in.AssertTenantID != tenantNameInServer.Load() {
-		return &pb.Result{HasErr: true, ErrInfo: "TiFlash is not assigned to this tenant", TenantID: tenantNameInServer.Load().(string), IsUnassigning: false}, nil
+func (s *FakeAssignServer) AssignTenant(ctx context.Context, in *pb.AssignRequest) (*pb.Result, error) {
+	s.tenantName.Store(in.GetTenantID())
+	return &pb.Result{HasErr: false, ErrInfo: "", TenantID: s.tenantName.Load().(string), IsUnassigning: false}, nil
+}
+
+func (s *FakeAssignServer) UnassignTenant(ctx context.Context, in *pb.UnassignRequest) (*pb.Result, error) {
+	if in.AssertTenantID != s.tenantName.Load() {
+		return &pb.Result{HasErr: true, ErrInfo: "TiFlash is not assigned to this tenant", TenantID: s.tenantName.Load().(string), IsUnassigning: false}, nil
 	}
-	tenantNameInServer.Store("")
-	return &pb.Result{HasErr: false, ErrInfo: "", TenantID: tenantNameInServer.Load().(string), IsUnassigning: false}, nil
+	s.tenantName.Store("")
+	return &pb.Result{HasErr: false, ErrInfo: "", TenantID: s.tenantName.Load().(string), IsUnassigning: false}, nil
 }
 
-func (s *server) GetCurrentTenant(ctx context.Context, empty *emptypb.Empty) (*pb.GetTenantResponse, error) {
-	return &pb.GetTenantResponse{TenantID: tenantNameInServer.Load().(string), IsUnassigning: false}, nil
+func (s *FakeAssignServer) GetCurrentTenant(ctx context.Context, empty *emptypb.Empty) (*pb.GetTenantResponse, error) {
+	if s.isTimeoutCase {
+		time.Sleep((GrpcCommonTimeOutSec + 5) * time.Second)
+	}
+	return &pb.GetTenantResponse{TenantID: s.tenantName.Load().(string), IsUnassigning: false}, nil
 }
 
 // If no error is returned, the close function will not be nil.
-func InitRpcTestEnv() (func(), error) {
+func InitRpcTestEnv(fakeServer *FakeAssignServer) (func(), error) {
 	lis, err := net.Listen("tcp", ":"+SupervisorPort)
 	if err != nil {
 		return nil, err
 	}
 	s := grpc.NewServer()
-	pb.RegisterAssignServer(s, &server{})
+	pb.RegisterAssignServer(s, fakeServer)
 	log.Printf("server listening at %v", lis.Addr())
 	go func() {
 		if err := s.Serve(lis); err != nil {
@@ -63,10 +68,9 @@ func TestAssignAndUnassignTenant(t *testing.T) {
 	tenantName := "test-tenant"
 	tenantName2 := "test-tenant2"
 	pdAddr := "123.123.123.123"
-
-	LogMode = LogModeLocalTest
-	InitZapLogger()
-	closer, err := InitRpcTestEnv()
+	InitTestEnv()
+	fakeAssignServer := &FakeAssignServer{}
+	closer, err := InitRpcTestEnv(fakeAssignServer)
 	assert.NoError(t, err)
 	defer closer()
 
@@ -93,4 +97,18 @@ func TestAssignAndUnassignTenant(t *testing.T) {
 	assert.False(t, unassignTenantResult.HasErr)
 	assert.Equal(t, unassignTenantResult.TenantID, "")
 	assert.False(t, unassignTenantResult.IsUnassigning)
+
+	unassignTenantResult, err = UnassignTenant(podIP, tenantName, true)
+	assert.NoError(t, err)
+	assert.True(t, unassignTenantResult.HasErr)
+	assert.True(t, strings.Contains(unassignTenantResult.ErrInfo, "TiFlash is not assigned to this tenant"))
+	assert.Equal(t, unassignTenantResult.TenantID, "")
+	assert.False(t, unassignTenantResult.IsUnassigning)
+
+	// test timeout case
+	fakeAssignServer.isTimeoutCase = true
+	_, err = GetCurrentTenant(podIP)
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "context deadline exceeded"))
+
 }

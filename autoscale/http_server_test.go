@@ -16,12 +16,12 @@ import (
 )
 
 func TestHttpServer(t *testing.T) {
+
 	httpServerAddr := "http://127.0.0.1:8081"
 
-	LogMode = LogModeLocalTest
+	InitTestEnv()
 	OptionRunMode = RunModeTest
 	IsSupClientMock = true
-	InitZapLogger()
 
 	cm := NewClusterManager(EnvRegion, false, nil)
 	Cm4Http = cm
@@ -39,10 +39,13 @@ func TestHttpServer(t *testing.T) {
 
 	_, err := cm.K8sCli.CoreV1().Pods(cm.Namespace).Create(context.TODO(), &readnode1, metav1.CreateOptions{})
 	assert.NoError(t, err)
+	err = cm.AutoScaleMeta.setupManualPauseMockTenant("t2", 1, 4, false, 60, nil)
+	assert.NoError(t, err)
 
 	// run http API server
-	go RunAutoscaleHttpServer()
-	defer CloseAutoscaleHttpServer()
+	httpServerManager := NewAutoscaleHttpServerManager()
+	go httpServerManager.RunAutoscaleHttpServer()
+	defer httpServerManager.CloseAutoscaleHttpServer()
 	defer cm.Shutdown()
 
 	// wait for http server start

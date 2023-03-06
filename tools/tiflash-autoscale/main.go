@@ -494,8 +494,9 @@ func main() {
 	autoscale.Cm4Http = cm
 
 	// run http API server
-	go autoscale.RunAutoscaleHttpServer()
-	defer autoscale.CloseAutoscaleHttpServer()
+	httpServerManager := autoscale.NewAutoscaleHttpServerManager()
+	go httpServerManager.RunAutoscaleHttpServer()
+	defer httpServerManager.CloseAutoscaleHttpServer()
 	// run grpc API server
 	go autoscale.RunGrpcServer()
 

@@ -39,10 +39,6 @@ type GetStateResult struct {
 	NumOfRNs  int    `json:"numOfRNs"`
 }
 
-var (
-	HttpServer *http.Server
-)
-
 func (ret *GetStateResult) WriteResp(hasErr int, errInfo string, state string, numOfRNs int) []byte {
 	ret.HasError = hasErr
 	ret.ErrorInfo = errInfo
@@ -63,6 +59,10 @@ const (
 var (
 	Cm4Http *ClusterManager
 )
+
+type AutoscaleHttpServerManager struct {
+	server *http.Server
+}
 
 func getIP(r *http.Request) (string, error) {
 	ips := r.Header.Get("X-Forwarded-For")
@@ -340,7 +340,7 @@ func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, resp)
 }
 
-func RunAutoscaleHttpServer() {
+func NewAutoscaleHttpServerManager() *AutoscaleHttpServerManager {
 	Logger.Infof("[http]Access-Control-Allow-Origin is enabled")
 	// autoscale.HardCodeEnvPdAddr = os.Getenv("PD_ADDR")
 	// autoscale.HardCodeEnvTidbStatusAddr = os.Getenv("TIDB_STATUS_ADDR")
@@ -355,19 +355,29 @@ func RunAutoscaleHttpServer() {
 	http.HandleFunc("/pause4test", HttpHandlePauseForTest)
 	http.HandleFunc("/sharedfixedpool", SharedFixedPool)
 	http.HandleFunc("/dumpmeta", DumpMeta)
-	HttpServer = &http.Server{Addr: ":8081"}
+	srv := &http.Server{Addr: ":8081"}
+	ret := &AutoscaleHttpServerManager{
+		server: srv,
+	}
+	return ret
+}
 
+func (cur *AutoscaleHttpServerManager) RunAutoscaleHttpServer() {
 	Logger.Infof("[HTTP]ListenAndServe 8081")
-	err := HttpServer.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
+	err := cur.server.ListenAndServe()
+	if err == http.ErrServerClosed {
+		Logger.Infof("[HTTP]server closed")
+		err = nil
+	}
+	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
 }
 
-func CloseAutoscaleHttpServer() {
-	if HttpServer == nil {
+func (cur *AutoscaleHttpServerManager) CloseAutoscaleHttpServer() {
+	if cur.server == nil {
 		return
 	}
-	Logger.Infof("[HTTP]Shut down the server")
-	HttpServer.Shutdown(context.Background())
+	Logger.Infof("[HTTP]Prepare to shut down the server")
+	cur.server.Shutdown(context.Background())
 }
