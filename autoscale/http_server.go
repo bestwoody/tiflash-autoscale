@@ -54,11 +54,16 @@ const (
 	TenantStatePausedString   = "paused"
 	TenantStatePausingString  = "pausing"
 	TenantStateUnknownString  = "unknown"
+	HttpServerPort            = "8081"
 )
 
 var (
 	Cm4Http *ClusterManager
 )
+
+type AutoscaleHttpServer struct {
+	server *http.Server
+}
 
 func getIP(r *http.Request) (string, error) {
 	ips := r.Header.Get("X-Forwarded-For")
@@ -130,7 +135,7 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 	flag, currentState, _ := Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 	if !flag {
 		//register new tenant for serveless tier
-		if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless || OptionRunMode == RunModeDedicated {
+		if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless || OptionRunMode == RunModeDedicated || OptionRunMode == RunModeTest {
 			Cm4Http.AutoScaleMeta.SetupAutoPauseTenantWithPausedState(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod)
 		}
 		flag, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
@@ -336,7 +341,7 @@ func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, resp)
 }
 
-func RunAutoscaleHttpServer() {
+func NewAutoscaleHttpServer() *AutoscaleHttpServer {
 	Logger.Infof("[http]Access-Control-Allow-Origin is enabled")
 	// autoscale.HardCodeEnvPdAddr = os.Getenv("PD_ADDR")
 	// autoscale.HardCodeEnvTidbStatusAddr = os.Getenv("TIDB_STATUS_ADDR")
@@ -351,10 +356,29 @@ func RunAutoscaleHttpServer() {
 	http.HandleFunc("/pause4test", HttpHandlePauseForTest)
 	http.HandleFunc("/sharedfixedpool", SharedFixedPool)
 	http.HandleFunc("/dumpmeta", DumpMeta)
+	srv := &http.Server{Addr: ":" + HttpServerPort}
+	ret := &AutoscaleHttpServer{
+		server: srv,
+	}
+	return ret
+}
 
-	Logger.Infof("[HTTP]ListenAndServe 8081")
-	err := http.ListenAndServe(":8081", nil)
+func (cur *AutoscaleHttpServer) Run() {
+	Logger.Infof("[HTTP]ListenAndServe " + HttpServerPort)
+	err := cur.server.ListenAndServe()
+	if err == http.ErrServerClosed {
+		Logger.Infof("[HTTP]server closed")
+		err = nil
+	}
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
+}
+
+func (cur *AutoscaleHttpServer) Close() {
+	if cur.server == nil {
+		return
+	}
+	Logger.Infof("[HTTP]Prepare to shut down the server")
+	cur.server.Shutdown(context.Background())
 }
