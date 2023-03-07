@@ -54,6 +54,7 @@ const (
 	TenantStatePausedString   = "paused"
 	TenantStatePausingString  = "pausing"
 	TenantStateUnknownString  = "unknown"
+	HttpServerPort            = "8081"
 )
 
 var (
@@ -355,7 +356,7 @@ func NewAutoscaleHttpServer() *AutoscaleHttpServer {
 	http.HandleFunc("/pause4test", HttpHandlePauseForTest)
 	http.HandleFunc("/sharedfixedpool", SharedFixedPool)
 	http.HandleFunc("/dumpmeta", DumpMeta)
-	srv := &http.Server{Addr: ":8081"}
+	srv := &http.Server{Addr: ":" + HttpServerPort}
 	ret := &AutoscaleHttpServer{
 		server: srv,
 	}
@@ -363,7 +364,7 @@ func NewAutoscaleHttpServer() *AutoscaleHttpServer {
 }
 
 func (cur *AutoscaleHttpServer) Run() {
-	Logger.Infof("[HTTP]ListenAndServe 8081")
+	Logger.Infof("[HTTP]ListenAndServe " + HttpServerPort)
 	err := cur.server.ListenAndServe()
 	if err == http.ErrServerClosed {
 		Logger.Infof("[HTTP]server closed")
