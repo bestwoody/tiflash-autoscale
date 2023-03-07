@@ -60,7 +60,7 @@ var (
 	Cm4Http *ClusterManager
 )
 
-type AutoscaleHttpServerManager struct {
+type AutoscaleHttpServer struct {
 	server *http.Server
 }
 
@@ -340,7 +340,7 @@ func GetMetricsFromNode(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, resp)
 }
 
-func NewAutoscaleHttpServerManager() *AutoscaleHttpServerManager {
+func NewAutoscaleHttpServer() *AutoscaleHttpServer {
 	Logger.Infof("[http]Access-Control-Allow-Origin is enabled")
 	// autoscale.HardCodeEnvPdAddr = os.Getenv("PD_ADDR")
 	// autoscale.HardCodeEnvTidbStatusAddr = os.Getenv("TIDB_STATUS_ADDR")
@@ -356,13 +356,13 @@ func NewAutoscaleHttpServerManager() *AutoscaleHttpServerManager {
 	http.HandleFunc("/sharedfixedpool", SharedFixedPool)
 	http.HandleFunc("/dumpmeta", DumpMeta)
 	srv := &http.Server{Addr: ":8081"}
-	ret := &AutoscaleHttpServerManager{
+	ret := &AutoscaleHttpServer{
 		server: srv,
 	}
 	return ret
 }
 
-func (cur *AutoscaleHttpServerManager) RunAutoscaleHttpServer() {
+func (cur *AutoscaleHttpServer) Run() {
 	Logger.Infof("[HTTP]ListenAndServe 8081")
 	err := cur.server.ListenAndServe()
 	if err == http.ErrServerClosed {
@@ -374,7 +374,7 @@ func (cur *AutoscaleHttpServerManager) RunAutoscaleHttpServer() {
 	}
 }
 
-func (cur *AutoscaleHttpServerManager) CloseAutoscaleHttpServer() {
+func (cur *AutoscaleHttpServer) Close() {
 	if cur.server == nil {
 		return
 	}

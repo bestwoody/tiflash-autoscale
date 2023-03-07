@@ -43,9 +43,9 @@ func TestHttpServer(t *testing.T) {
 	assert.NoError(t, err)
 
 	// run http API server
-	httpServerManager := NewAutoscaleHttpServerManager()
-	go httpServerManager.RunAutoscaleHttpServer()
-	defer httpServerManager.CloseAutoscaleHttpServer()
+	httpServer := NewAutoscaleHttpServer()
+	go httpServer.Run()
+	defer httpServer.Close()
 	defer cm.Shutdown()
 
 	// wait for http server start
