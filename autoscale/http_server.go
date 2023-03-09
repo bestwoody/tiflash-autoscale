@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -21,8 +22,10 @@ import (
 	rest "k8s.io/client-go/rest"
 )
 
-var HttpResumeWaitTimoueSec = 15
+var HttpResumeWaitTimoueSec = 30
 var HttpResumeCheckIntervalMs = 100
+
+var httpReqId = atomic.Int32{}
 
 type ResumeAndGetTopologyResult struct {
 	HasError  int      `json:"hasError"`
@@ -95,6 +98,7 @@ func getIP(r *http.Request) (string, error) {
 }
 
 func (ret *ResumeAndGetTopologyResult) WriteResp(hasErr int, state string, errInfo string, topo []string) []byte {
+	// Logger.Infof("[HTTP]ResumeAndGetTopology, WriteResp: %v | %v | %v | %+v", hasErr, state, errInfo, topo)
 	ret.HasError = hasErr
 	ret.State = state
 	ret.ErrorInfo = errInfo
@@ -126,10 +130,15 @@ func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
+func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32) {
 	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
+	retStr := ""
+	defer func() {
+		Logger.Infof("[HTTP]ResumeAndGetTopology, reqid:%v resp:%v", reqid, retStr)
+	}()
 	if tenantName == "" {
-		io.WriteString(w, string(ret.WriteResp(1, "unknown", "invalid tidbclusterid", nil)))
+		retStr = string(ret.WriteResp(1, "unknown", "invalid tidbclusterid", nil))
+		io.WriteString(w, retStr)
 		return
 	}
 	flag, currentState, _ := Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
@@ -140,7 +149,8 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 		}
 		flag, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 		if !flag {
-			io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "get state failed, tenant does not exist", nil)))
+			retStr = string(ret.WriteResp(1, TenantState2String(currentState), "get state failed, tenant does not exist", nil))
+			io.WriteString(w, retStr)
 			return
 		}
 	}
@@ -149,12 +159,17 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 	// if currentState == TenantStatePaused {
 	flag = Cm4Http.Resume(tenantName)
 	_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
+	tenantDesc := Cm4Http.AutoScaleMeta.GetTenantDesc(tenantName)
+	minCntOfRequiredPods := 1
+	if tenantDesc != nil {
+		minCntOfRequiredPods = tenantDesc.GetMinCntOfPod()
+	}
 
 	// wait util topology is not empty or timeout
-	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 {
+	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) < minCntOfRequiredPods {
 		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed but topology is not ready, begin to wait at most %vs", HttpResumeWaitTimoueSec)
 		waitSt := time.Now()
-		for len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 && time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
+		for len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) < minCntOfRequiredPods && time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
 			// for time.Now().UnixMilli()-waitSt.UnixMilli() < 15*1000 {
 			time.Sleep(time.Duration(HttpResumeCheckIntervalMs) * time.Millisecond)
 			flag = Cm4Http.Resume(tenantName)
@@ -167,10 +182,12 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 	}
 
 	if !flag {
-		io.WriteString(w, string(ret.WriteResp(1, TenantState2String(currentState), "resume failed", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+		retStr = string(ret.WriteResp(1, TenantState2String(currentState), "resume failed", Cm4Http.AutoScaleMeta.GetTopology(tenantName)))
+		io.WriteString(w, retStr)
 		return
 	} else {
-		io.WriteString(w, string(ret.WriteResp(0, TenantState2String(currentState), "", Cm4Http.AutoScaleMeta.GetTopology(tenantName))))
+		retStr = string(ret.WriteResp(0, TenantState2String(currentState), "", Cm4Http.AutoScaleMeta.GetTopology(tenantName)))
+		io.WriteString(w, retStr)
 		return
 	}
 	// } else {
@@ -180,6 +197,7 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string) {
 
 func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
+	curReqID := httpReqId.Add(1)
 	defer func() {
 		MetricOfHttpRequestHttpHandleResumeAndGetTopologyMetricSeconds.Observe(time.Since(start).Seconds())
 	}()
@@ -187,8 +205,8 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	ip, _ := getIP(req)
 	tenantName := req.FormValue("tidbclusterid")
-	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v, client: %v", tenantName, ip)
-	ResumeAndGetTopology(w, tenantName)
+	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v, client: %v, reqid: %v", tenantName, ip, curReqID)
+	ResumeAndGetTopology(w, tenantName, curReqID)
 }
 
 func HttpHandlePauseForTest(w http.ResponseWriter, req *http.Request) {
