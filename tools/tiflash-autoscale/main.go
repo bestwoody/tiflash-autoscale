@@ -422,6 +422,9 @@ func main() {
 	autoscale.HardCodeEnvPdAddr = os.Getenv(EnvKeyPdAddr)
 	autoscale.HardCodeEnvTidbStatusAddr = os.Getenv(EnvKeyTidbStatusAddr)
 	autoscale.HardCodeSupervisorImage = os.Getenv(EnvKeySupervisorImage)
+	if autoscale.HardCodeSupervisorImage == "" {
+		panic("supervisor image is null! please use env var TIFLASH_SUPERVISOR_IMAGE to set.")
+	}
 	envKubeRunMode := os.Getenv(EnvKeyKubeRunMode)
 	if envKubeRunMode == "local" {
 		autoscale.OptionRunMode = autoscale.RunModeLocal
