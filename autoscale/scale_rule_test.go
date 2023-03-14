@@ -15,6 +15,21 @@ func InitTestEnv() {
 	InitZapLogger()
 }
 
+func TestComputeBestCore3(t *testing.T) {
+	InitTestEnv()
+	minPods := 1
+	maxPods := 4
+	tenantDesc := NewAutoPauseTenantDescWithState("test1", minPods, maxPods, TenantStateResumed)
+	tenantDesc.SetPod("p1", &PodDesc{Name: "p1"})
+	tenantDesc.SetPod("p2", &PodDesc{Name: "p3"})
+	tenantDesc.SetPod("p3", &PodDesc{Name: "p3"})
+	target, delta := ComputeBestPodsInRuleOfCompute(
+		tenantDesc, ComputeCpuUsageCoresPerPod(0.1376888115180687), 0.2, 0.5)
+	assertEqual(t, target, 1)
+	assertEqual(t, delta, -2)
+
+}
+
 func TestComputeBestCore(t *testing.T) {
 	InitTestEnv()
 	minPods := 1

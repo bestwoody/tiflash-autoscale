@@ -32,8 +32,8 @@ const (
 	RunModeTest
 )
 
-const ComonentLabelNameForAlarm = "app.kubernetes.io/component"
-const ComonentLabelValueForAlarm = "tiflash-autoscale"
+const LabelNameForAlarm = "app.kubernetes.io/component"
+const LabelValueForAlarm = "tiflash-autoscale"
 
 const AnnotationKeyOfSupervisorRDVersionn = "tiflash.autoscale.rdversion"
 
@@ -686,8 +686,8 @@ func (c *ClusterManager) initK8sComponents() {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: c.CloneSetName,
 			Labels: map[string]string{
-				"app":                     c.CloneSetName,
-				ComonentLabelNameForAlarm: ComonentLabelValueForAlarm,
+				"app":             c.CloneSetName,
+				LabelNameForAlarm: LabelValueForAlarm,
 			},
 			Annotations: map[string]string{
 				AnnotationKeyOfSupervisorRDVersionn: c.getSupervisorRdVersion(),
@@ -702,8 +702,8 @@ func (c *ClusterManager) initK8sComponents() {
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						"app":                     c.CloneSetName,
-						ComonentLabelNameForAlarm: ComonentLabelValueForAlarm,
+						"app":             c.CloneSetName,
+						LabelNameForAlarm: LabelValueForAlarm,
 					},
 					Annotations: map[string]string{
 						"prometheus.io/path":   "/metrics",
