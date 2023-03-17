@@ -675,6 +675,14 @@ func (c *ClusterManager) getTiflashCachePath() string {
 
 }
 
+func (c *ClusterManager) getTiflashCacheCap() string {
+	if OptionRunMode == RunModeDedicated { //dedicated tier
+		return "107374182400"
+	} else {
+		return "10737418240"
+	}
+}
+
 func (c *ClusterManager) getVolumesMount() []v1.VolumeMount {
 	if OptionRunMode == RunModeDedicated { //dedicated tier
 		return []v1.VolumeMount{
@@ -812,6 +820,10 @@ func (c *ClusterManager) initK8sComponents() {
 								{
 									Name:  "TIFLASH_CACHE_PATH",
 									Value: c.getTiflashCachePath(),
+								},
+								{
+									Name:  "TIFLASH_CACHE_CAP",
+									Value: c.getTiflashCacheCap(),
 								},
 							},
 							Name: "supervisor",
