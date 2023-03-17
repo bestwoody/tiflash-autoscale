@@ -666,7 +666,7 @@ func (c *ClusterManager) getSupervisorRdVersion() string {
 	}
 }
 
-func (c *ClusterManager)  getTiflashCachePath() string {
+func (c *ClusterManager) getTiflashCachePath() string {
 	if OptionRunMode == RunModeDedicated { //dedicated tier
 		return "/data/cache"
 	} else {
@@ -810,9 +810,9 @@ func (c *ClusterManager) initK8sComponents() {
 									Value: ReadNodeLogUploadS3Bucket,
 								},
 								{
-									Name: "TIFLASH_CACHE_PATH",
+									Name:  "TIFLASH_CACHE_PATH",
 									Value: c.getTiflashCachePath(),
-								}
+								},
 							},
 							Name: "supervisor",
 							// docker image
