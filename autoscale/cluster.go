@@ -13,6 +13,7 @@ import (
 	"github.com/openkruise/kruise-api/apps/v1alpha1"
 	kruiseclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/watch"
@@ -659,9 +660,70 @@ func (c *ClusterManager) getSupervisorRdVersion() string {
 	if OptionRunMode == RunModeServeless {
 		return "1"
 	} else if OptionRunMode == RunModeDedicated { //dedicated tier
-		return "0"
+		return "1"
 	} else {
 		return "1"
+	}
+}
+
+func (c *ClusterManager)  getTiflashCachePath() string {
+	if OptionRunMode == RunModeDedicated { //dedicated tier
+		return "/data/cache"
+	} else {
+		return ""
+	}
+
+}
+
+func (c *ClusterManager) getVolumesMount() []v1.VolumeMount {
+	if OptionRunMode == RunModeDedicated { //dedicated tier
+		return []v1.VolumeMount{
+			{
+				Name:      "sharedtmpdisk",
+				MountPath: "/tiflash/log/",
+			},
+
+			{
+				Name:      "cachedisk",
+				MountPath: "/data",
+			},
+		}
+	} else {
+		return []v1.VolumeMount{
+			{
+				Name:      "sharedtmpdisk",
+				MountPath: "/tiflash/log/",
+			}}
+	}
+}
+
+func (c *ClusterManager) getVolumeClaimTemplates() []v1.PersistentVolumeClaim {
+	if OptionRunMode == RunModeServeless {
+		return nil
+	} else if OptionRunMode == RunModeDedicated { //dedicated tier
+		scn := "cloud-ssd"
+		vm := v1.PersistentVolumeFilesystem
+		return []v1.PersistentVolumeClaim{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cachedisk",
+				},
+				Spec: v1.PersistentVolumeClaimSpec{
+					AccessModes: []v1.PersistentVolumeAccessMode{
+						"ReadWriteOnce",
+					},
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							"storage": resource.MustParse("110Gi"),
+						},
+					},
+					StorageClassName: &scn,
+					VolumeMode:       &vm,
+				},
+			},
+		}
+	} else {
+		return nil
 	}
 }
 
@@ -747,16 +809,16 @@ func (c *ClusterManager) initK8sComponents() {
 									Name:  "S3_FOR_TIFLASH_LOG",
 									Value: ReadNodeLogUploadS3Bucket,
 								},
+								{
+									Name: "TIFLASH_CACHE_PATH",
+									Value: c.getTiflashCachePath(),
+								}
 							},
 							Name: "supervisor",
 							// docker image
 							Image:           GetSupervisorDockerImager(),
 							ImagePullPolicy: "IfNotPresent",
-							VolumeMounts: []v1.VolumeMount{
-								{
-									Name:      "sharedtmpdisk",
-									MountPath: "/tiflash/log/",
-								}},
+							VolumeMounts:    c.getVolumesMount(),
 						},
 						/*
 							- name: count-log-1
@@ -806,23 +868,7 @@ func (c *ClusterManager) initK8sComponents() {
 					},
 				},
 			},
-			// VolumeClaimTemplates: []v1.PersistentVolumeClaim{
-			// 	{
-			// 		ObjectMeta: metav1.ObjectMeta{
-			// 			Name: volumeName,
-			// 		},
-			// 		Spec: v1.PersistentVolumeClaimSpec{
-			// 			AccessModes: []v1.PersistentVolumeAccessMode{
-			// 				"ReadWriteOnce",
-			// 			},
-			// 			Resources: v1.ResourceRequirements{
-			// 				Requests: v1.ResourceList{
-			// 					"storage": resource.MustParse("20Gi"),
-			// 				},
-			// 			},
-			// 		},
-			// 	},
-			// },
+			VolumeClaimTemplates: c.getVolumeClaimTemplates(),
 		},
 	}
 	if !found {
