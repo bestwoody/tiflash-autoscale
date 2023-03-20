@@ -25,11 +25,11 @@ var HardCodeEnvTidbStatusAddr string
 var HardCodeEnvPdAddr string
 var HardCodeSupervisorImage string
 
-func AssignTenantHardCodeArgs(podIP string, tenantName string, pdAddr string) (resp *supervisor.Result, err error) {
-	return AssignTenant(podIP, tenantName, HardCodeEnvTidbStatusAddr, pdAddr)
+func AssignTenantHardCodeArgs(podIP string, tenantName string, pdAddr string, tiflashVer string) (resp *supervisor.Result, err error) {
+	return AssignTenant(podIP, tenantName, HardCodeEnvTidbStatusAddr, pdAddr, tiflashVer)
 }
 
-func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr string) (resp *supervisor.Result, err error) {
+func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr string, tiflashVer string) (resp *supervisor.Result, err error) {
 	start := time.Now()
 	MetricOfSupervisorClientRequestAssignTenantCnt.Inc()
 	defer func() {
@@ -66,7 +66,7 @@ func AssignTenant(podIP string, tenantName string, tidbStatusAddr string, pdAddr
 		r, err :=
 			c.AssignTenant(
 				ctx,
-				&supervisor.AssignRequest{TenantID: tenantName, TidbStatusAddr: tidbStatusAddr, PdAddr: pdAddr})
+				&supervisor.AssignRequest{TenantID: tenantName, TidbStatusAddr: tidbStatusAddr, PdAddr: pdAddr, TiflashVer: tiflashVer})
 		if err != nil {
 			Logger.Errorf("[error][SupClient]AssignTenant fail: %v , podIP: %v ", err, podIP)
 			return r, err

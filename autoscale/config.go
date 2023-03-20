@@ -56,14 +56,15 @@ type ConfigOfComputeCluster struct {
 	CpuScaleRules            *CustomScaleRule     // triger when modified: reload config before next analyze loop
 	ConfigOfTiDBCluster      *ConfigOfTiDBCluster // triger when modified: instantly reload compute pod's config  TODO handle version change case
 	LastModifiedTs           int64
+	Version                  string
 }
 
 func (c *ConfigOfComputeCluster) Dump() string {
 	if c == nil {
 		return "nil"
 	}
-	return fmt.Sprintf("ConfigOfComputeCluster{Disabled:%v, AutoPauseIntervalSec:%v, MinCores:%v, MaxCores:%v, InitCores:%v, WindowSec:%v, CpuScaleRules:%v, TidbCluster:%v, LastModifiedTs:%v}",
-		c.Disabled, c.AutoPauseIntervalSeconds, c.MinCores, c.MaxCores, c.InitCores, c.WindowSeconds, c.CpuScaleRules.Dump(), c.ConfigOfTiDBCluster.Dump(), c.LastModifiedTs)
+	return fmt.Sprintf("ConfigOfComputeCluster{Disabled:%v, AutoPauseIntervalSec:%v, MinCores:%v, MaxCores:%v, InitCores:%v, WindowSec:%v, CpuScaleRules:%v, TidbCluster:%v, LastModifiedTs:%v, Version:%v}",
+		c.Disabled, c.AutoPauseIntervalSeconds, c.MinCores, c.MaxCores, c.InitCores, c.WindowSeconds, c.CpuScaleRules.Dump(), c.ConfigOfTiDBCluster.Dump(), c.LastModifiedTs, c.Version)
 }
 
 func (c *ConfigOfComputeCluster) GetInitCntOfPod() int {
@@ -192,6 +193,7 @@ type YamlClusterConfig struct {
 	CpuLowerLimit    float64 `yaml:"cpu_lowerlimit,omitempty"`
 	CpuUpperLimit    float64 `yaml:"cpu_upperlimit,omitempty"`
 	Pd               string  `yaml:"pd,omitempty"`
+	Version          string  `yaml:"version,omitempty"`
 }
 
 func GenerateDefaultPdAddr(tenantId string) string {

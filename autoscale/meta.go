@@ -254,6 +254,13 @@ func (c *TenantDesc) GetOrGenDefaultPdAddr() string {
 }
 
 // checked
+func (c *TenantDesc) GetTiFlashVer() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conf.Version
+}
+
+// checked
 func (c *TenantDesc) GetLowerAndUpperCpuScaleThreshold() (float64, float64) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -513,7 +520,7 @@ func (c *TenantDesc) GetStateAndCntOfPods() (int32, int) {
 // 	return NewTenantDescWithState(name, minPods, maxPods, TenantStateResumed)
 // }
 
-func NewAutoPauseTenantDescWithState(name string, minPods int, maxPods int, state int32) *TenantDesc {
+func NewAutoPauseTenantDescWithState(name string, minPods int, maxPods int, state int32, version string) *TenantDesc {
 	return &TenantDesc{
 		Name:  name,
 		State: state,
@@ -533,6 +540,7 @@ func NewAutoPauseTenantDescWithState(name string, minPods int, maxPods int, stat
 				Name: name,
 			},
 			LastModifiedTs: 0,
+			Version:        version,
 		},
 	}
 }
@@ -1290,6 +1298,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 		}
 	}
 	pdAddr := tenantDesc.GetOrGenDefaultPdAddr()
+	tiflashVer := tenantDesc.GetTiFlashVer()
 
 	podsToAssign, failCnt := c.PrewarmPool.getWarmedPods(tenant, addCnt)
 	c.mu.Unlock()
@@ -1511,8 +1520,8 @@ func (c *AutoScaleMeta) HandleK8sDelPodEvent(name string) bool {
 }
 
 // checked
-func (c *AutoScaleMeta) SetupAutoPauseTenantWithState(tenant string, minPods int, maxPods int, state int32) bool {
-	return c.setupAutoPauseTenantWithStateExtraArgs(tenant, minPods, maxPods, state, true)
+func (c *AutoScaleMeta) SetupAutoPauseTenantWithState(tenant string, minPods int, maxPods int, state int32, version string) bool {
+	return c.setupAutoPauseTenantWithStateExtraArgs(tenant, minPods, maxPods, state, true, version)
 }
 
 func (c *AutoScaleMeta) putTenantMap(tenant string, v *TenantDesc, needLock bool) bool {
@@ -1542,14 +1551,14 @@ func (c *AutoScaleMeta) putTenantMap(tenant string, v *TenantDesc, needLock bool
 }
 
 // checked
-func (c *AutoScaleMeta) setupAutoPauseTenantWithStateExtraArgs(tenant string, minPods int, maxPods int, state int32, needLock bool) bool {
-	Logger.Infof("[SetupTenant] SetupTenant(%v, %v, %v)", tenant, minPods, maxPods)
-	return c.putTenantMap(tenant, NewAutoPauseTenantDescWithState(tenant, minPods, maxPods, state), needLock)
+func (c *AutoScaleMeta) setupAutoPauseTenantWithStateExtraArgs(tenant string, minPods int, maxPods int, state int32, needLock bool, version string) bool {
+	Logger.Infof("[SetupTenant] SetupTenant(%v, %v, %v, %v)", tenant, minPods, maxPods, version)
+	return c.putTenantMap(tenant, NewAutoPauseTenantDescWithState(tenant, minPods, maxPods, state, version), needLock)
 }
 
 // checked
-func (c *AutoScaleMeta) SetupAutoPauseTenantWithPausedState(tenant string, minPods int, maxPods int) bool {
-	return c.SetupAutoPauseTenantWithState(tenant, minPods, maxPods, TenantStatePaused)
+func (c *AutoScaleMeta) SetupAutoPauseTenantWithPausedState(tenant string, minPods int, maxPods int, version string) bool {
+	return c.SetupAutoPauseTenantWithState(tenant, minPods, maxPods, TenantStatePaused, version)
 }
 
 // checked

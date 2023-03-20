@@ -130,7 +130,7 @@ func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32) {
+func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32, version string) {
 	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
 	retStr := ""
 	defer func() {
@@ -145,7 +145,7 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32)
 	if !flag {
 		//register new tenant for serveless tier
 		if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless || OptionRunMode == RunModeDedicated || OptionRunMode == RunModeTest {
-			Cm4Http.AutoScaleMeta.SetupAutoPauseTenantWithPausedState(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod)
+			Cm4Http.AutoScaleMeta.SetupAutoPauseTenantWithPausedState(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod, version)
 		}
 		flag, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 		if !flag {
@@ -205,8 +205,9 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	ip, _ := getIP(req)
 	tenantName := req.FormValue("tidbclusterid")
-	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v, client: %v, reqid: %v", tenantName, ip, curReqID)
-	ResumeAndGetTopology(w, tenantName, curReqID)
+	version := req.FormValue("cn_version")
+	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v, client: %v, reqid: %v, cn_version: %v", tenantName, ip, curReqID, version)
+	ResumeAndGetTopology(w, tenantName, curReqID, version)
 }
 
 func HttpHandlePauseForTest(w http.ResponseWriter, req *http.Request) {

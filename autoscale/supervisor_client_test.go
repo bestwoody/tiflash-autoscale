@@ -2,16 +2,17 @@ package autoscale
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
-	pb "github.com/tikv/pd/supervisor_proto"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"net"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	pb "github.com/tikv/pd/supervisor_proto"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type FakeAssignServer struct {
@@ -74,7 +75,7 @@ func TestAssignAndUnassignTenant(t *testing.T) {
 	assert.NoError(t, err)
 	defer closer()
 
-	assignTenantResult, err := AssignTenantHardCodeArgs(podIP, tenantName, pdAddr)
+	assignTenantResult, err := AssignTenantHardCodeArgs(podIP, tenantName, pdAddr, "")
 	assert.NoError(t, err)
 	assert.False(t, assignTenantResult.HasErr)
 	assertEqual(t, assignTenantResult.TenantID, tenantName)
