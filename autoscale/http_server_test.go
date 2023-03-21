@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/prometheus/common/expfmt"
-	"github.com/stretchr/testify/assert"
 	"io"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/prometheus/common/expfmt"
+	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestHttpServer(t *testing.T) {
