@@ -130,10 +130,10 @@ func (p *PodDesc) GetTenantInfo() (string, int64) {
 }
 
 // checked
-func (c *PodDesc) AssignTenantWithMockConf(tenant string, pdAddr string) (resp *supervisor.Result, err error) {
+func (c *PodDesc) AssignTenantWithMockConf(tenant string, pdAddr string, tiflashVer string) (resp *supervisor.Result, err error) {
 	c.muOfGrpc.Lock()
 	defer c.muOfGrpc.Unlock()
-	return AssignTenantHardCodeArgs(c.IP, tenant, pdAddr)
+	return AssignTenantHardCodeArgs(c.IP, tenant, pdAddr, tiflashVer)
 }
 
 // checked
@@ -720,7 +720,7 @@ func NewAutoScaleMeta(k8sConfig *restclient.Config, configManager *ConfigManager
 		// Pod2tenant: make(map[string]string),
 		tenantMap:     make(map[string]*TenantDesc),
 		PodDescMap:    make(map[string]*PodDesc),
-		PrewarmPool:   NewPrewarmPool(NewAutoPauseTenantDescWithState("", 0, PrewarmPoolCap, TenantStateResumed)),
+		PrewarmPool:   NewPrewarmPool(NewAutoPauseTenantDescWithState("", 0, PrewarmPoolCap, TenantStateResumed, "")),
 		k8sCli:        client,
 		configManager: configManager,
 	}
@@ -807,7 +807,7 @@ func (c *AutoScaleMeta) setupAutoPauseMockTenant(name string, minPods, maxPods i
 
 // checked
 func (c *AutoScaleMeta) loadTenants4Test() {
-	c.SetupAutoPauseTenantWithPausedState("t1", 1, 4)
+	c.SetupAutoPauseTenantWithPausedState("t1", 1, 4, "")
 
 	c.setupManualPauseMockTenant("t2", 1, 4, false, 60, nil) // t2
 	c.setupManualPauseMockTenant("t3", 1, 4, true, 60, nil)  // t3
@@ -1207,14 +1207,15 @@ func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodD
 		newTenantDesc, ok = c.tenantMap[tenant]
 
 		if !ok {
+			// TODO consider get tiflash version from config manager
 			if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless || OptionRunMode == RunModeTest {
 				Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register", tenant)
-				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false)
+				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false, "")
 				newTenantDesc, ok = c.tenantMap[tenant]
 			} else {
 				///TODO consider dedicated case more specific
 				Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register", tenant)
-				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false)
+				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false, "")
 				newTenantDesc, ok = c.tenantMap[tenant]
 			}
 		} else {
@@ -1320,7 +1321,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 		defer v.isStateChanging.Store(false)
 		go func(v *PodDesc) {
 			defer apiWg.Done()
-			resp, err := v.AssignTenantWithMockConf(tenant, pdAddr)
+			resp, err := v.AssignTenantWithMockConf(tenant, pdAddr, tiflashVer)
 			localMu.Lock()
 			defer localMu.Unlock()
 			if err != nil || resp.HasErr {

@@ -86,3 +86,10 @@ func TestEmptyYamlConfig(t *testing.T) {
 	yamlConfig := LoadYamlConfig(testByte, defaultConfig)
 	assertEqual(t, len(yamlConfig.ComputeClusters), 0)
 }
+
+func TestHehe(t *testing.T) {
+	mp := make(map[string]string)
+	mp[""] = "abc"
+	v := mp["123"]
+	assertEqual(t, v, "")
+}
