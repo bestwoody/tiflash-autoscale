@@ -709,7 +709,7 @@ func (c *ClusterManager) getVolumeClaimTemplates() []v1.PersistentVolumeClaim {
 	if OptionRunMode == RunModeServeless {
 		return nil
 	} else if OptionRunMode == RunModeDedicated { //dedicated tier
-		scn := "cloud-ssd"
+		scn := "local-storage"
 		vm := v1.PersistentVolumeFilesystem
 		return []v1.PersistentVolumeClaim{
 			{
