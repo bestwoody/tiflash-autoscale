@@ -159,7 +159,7 @@ func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta, atSta
 
 			oldTenant, _ := podDesc.GetTenantInfo()
 			if (atStartup || oldTenant != "" /*startup any pod or runtime tenant's pod */) && !resp.IsUnassigning && (oldTenant != resp.GetTenantID() || podDesc.startTimeOfAssign != resp.StartTime) {
-				Logger.Infof("[PodDesc][GetCurrentTenant]state need to update, podname: %v tenantDiff:[%v vs %v] stimeDiff:[%v vs %v]", podDesc.Name, podDesc.tenantName, resp.GetTenantID(), podDesc.startTimeOfAssign, resp.StartTime)
+				Logger.Infof("[PodDesc][GetCurrentTenant]state need to update, podname: %v tenantDiff:[%v vs %v] stimeDiff:[%v vs %v] ver:[%v]", podDesc.Name, podDesc.tenantName, resp.GetTenantID(), podDesc.startTimeOfAssign, resp.StartTime, resp.GetTiflashVer())
 				meta.UpdateLocalMetaPodOfTenant(podDesc.Name, podDesc, resp.GetTenantID(), resp.StartTime, resp.GetTiflashVer())
 			}
 		}
@@ -212,6 +212,20 @@ func (c *TenantDesc) SortPodsAtStartUp() {
 func (c *TenantDesc) SetupConfig(confHolder *ConfigOfComputeClusterHolder) {
 	c.refOfLatestConf = confHolder
 	c.TryToReloadConf(true)
+}
+
+// speciall case for version
+func (c *TenantDesc) CheckAndUpdateVersion(ver string) bool {
+	if ver != "" { // only work for non-empty ver cases!
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.conf.Version != ver {
+			c.conf.Version = ver
+			Logger.Warnf("version incorrect, tenant:%v, ver: %v vs %v", c.Name, c.conf.Version, ver)
+			return true
+		}
+	}
+	return false
 }
 
 // checked

@@ -154,12 +154,14 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32,
 			return
 		}
 	}
+	tenantDesc := Cm4Http.AutoScaleMeta.GetTenantDesc(tenantName)
+	tenantDesc.CheckAndUpdateVersion(version)
 	// state := req.FormValue("state")
 
 	// if currentState == TenantStatePaused {
 	flag = Cm4Http.Resume(tenantName)
 	_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
-	tenantDesc := Cm4Http.AutoScaleMeta.GetTenantDesc(tenantName)
+	// tenantDesc := Cm4Http.AutoScaleMeta.GetTenantDesc(tenantName)
 	minCntOfRequiredPods := DefaultMinCntOfPod
 	if tenantDesc != nil {
 		minCntOfRequiredPods = tenantDesc.GetMinCntOfPod()
