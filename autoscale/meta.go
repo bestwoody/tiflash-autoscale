@@ -160,7 +160,7 @@ func (podDesc *PodDesc) ApiGetCurrentTenantAndCorrect(meta *AutoScaleMeta, atSta
 			oldTenant, _ := podDesc.GetTenantInfo()
 			if (atStartup || oldTenant != "" /*startup any pod or runtime tenant's pod */) && !resp.IsUnassigning && (oldTenant != resp.GetTenantID() || podDesc.startTimeOfAssign != resp.StartTime) {
 				Logger.Infof("[PodDesc][GetCurrentTenant]state need to update, podname: %v tenantDiff:[%v vs %v] stimeDiff:[%v vs %v]", podDesc.Name, podDesc.tenantName, resp.GetTenantID(), podDesc.startTimeOfAssign, resp.StartTime)
-				meta.UpdateLocalMetaPodOfTenant(podDesc.Name, podDesc, resp.GetTenantID(), resp.StartTime)
+				meta.UpdateLocalMetaPodOfTenant(podDesc.Name, podDesc, resp.GetTenantID(), resp.StartTime, resp.GetTiflashVer())
 			}
 		}
 		return resp, err
@@ -1187,7 +1187,7 @@ func (c *AutoScaleMeta) getTenantDescOrWarmedPool(tenant string) *TenantDesc {
 }
 
 // checked
-func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodDesc, tenant string, startTimeOfAssign int64) {
+func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodDesc, tenant string, startTimeOfAssign int64, version string) {
 	Logger.Infof("[AutoScaleMeta]updateLocalMetaPodOfTenant pod:%v tenant:%v", podName, tenant)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1209,13 +1209,13 @@ func (c *AutoScaleMeta) UpdateLocalMetaPodOfTenant(podName string, podDesc *PodD
 		if !ok {
 			// TODO consider get tiflash version from config manager
 			if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless || OptionRunMode == RunModeTest {
-				Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register", tenant)
-				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false, "")
+				Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register, version: %v", tenant, version)
+				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false, version)
 				newTenantDesc, ok = c.tenantMap[tenant]
 			} else {
 				///TODO consider dedicated case more specific
-				Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register", tenant)
-				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false, "")
+				Logger.Infof("[AutoScaleMeta][updateLocalMetaPodOfTenant]no such tenant:%v, do auto register, version: %v", tenant, version)
+				c.setupAutoPauseTenantWithStateExtraArgs(tenant, DefaultMinCntOfPod, DefaultMaxCntOfPod, TenantStateResumed, false, version)
 				newTenantDesc, ok = c.tenantMap[tenant]
 			}
 		} else {
@@ -1332,7 +1332,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 				} else { // app api error , correct its state
 					Logger.Errorf("[error][AutoScaleMeta][resize][addPodIntoTenant][%v] app api error , err: %v", tenant, resp.ErrInfo)
 					if !resp.IsUnassigning {
-						c.UpdateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
+						c.UpdateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime, resp.TiflashVer)
 					} else { /// TODO consider it deeper
 						HandleUnassingCase(c, resp.TenantID, v, tsContainer)
 					}
@@ -1464,7 +1464,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 				} else { // app api error , correct its state
 					Logger.Errorf("[error][AutoScaleMeta][resize][removePodFromTenant][%v] app api error, undo , err: %v", tenant, resp.ErrInfo)
 					if !resp.IsUnassigning {
-						c.UpdateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime)
+						c.UpdateLocalMetaPodOfTenant(v.Name, v, resp.TenantID, resp.StartTime, resp.TiflashVer)
 					} else { /// TODO consider it deeper
 						HandleUnassingCase(c, resp.TenantID, v, tsContainer)
 					}
@@ -1520,11 +1520,6 @@ func (c *AutoScaleMeta) HandleK8sDelPodEvent(name string) bool {
 	}
 }
 
-// checked
-func (c *AutoScaleMeta) SetupAutoPauseTenantWithState(tenant string, minPods int, maxPods int, state int32, version string) bool {
-	return c.setupAutoPauseTenantWithStateExtraArgs(tenant, minPods, maxPods, state, true, version)
-}
-
 func (c *AutoScaleMeta) putTenantMap(tenant string, v *TenantDesc, needLock bool) bool {
 	if needLock {
 		c.mu.Lock()
@@ -1555,6 +1550,11 @@ func (c *AutoScaleMeta) putTenantMap(tenant string, v *TenantDesc, needLock bool
 func (c *AutoScaleMeta) setupAutoPauseTenantWithStateExtraArgs(tenant string, minPods int, maxPods int, state int32, needLock bool, version string) bool {
 	Logger.Infof("[SetupTenant] SetupTenant(%v, %v, %v, %v)", tenant, minPods, maxPods, version)
 	return c.putTenantMap(tenant, NewAutoPauseTenantDescWithState(tenant, minPods, maxPods, state, version), needLock)
+}
+
+// checked
+func (c *AutoScaleMeta) SetupAutoPauseTenantWithState(tenant string, minPods int, maxPods int, state int32, version string) bool {
+	return c.setupAutoPauseTenantWithStateExtraArgs(tenant, minPods, maxPods, state, true, version)
 }
 
 // checked

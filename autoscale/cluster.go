@@ -72,6 +72,18 @@ const ReadNodeCloneSetName = "readnode"
 var OptionRunMode = RunModeServeless
 var EnvRegion string
 
+func RunModeEnvToString(runmode OptionRunMode) string {
+	if OptionRunMode == RunModeLocal {
+		return "local"
+	} else if OptionRunMode == RunModeDedicated {
+		return "dedicated"
+	} else if OptionRunMode == RunModeServeless {
+		return "serverless"
+	} else {
+		panic(fmt.Sprintf("unknown value of env TIFLASH_AS_KUBE_RUN_MODE: %v, valid options:{local, dedicated, serverless}", envKubeRunMode))
+	}
+}
+
 func outsideConfig() (*restclient.Config, error) {
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
@@ -658,11 +670,11 @@ func (c *ClusterManager) createCloneSet(cloneSet v1alpha1.CloneSet) (*v1alpha1.C
 
 func (c *ClusterManager) getSupervisorRdVersion() string {
 	if OptionRunMode == RunModeServeless {
-		return "1"
+		return "2"
 	} else if OptionRunMode == RunModeDedicated { //dedicated tier
-		return "0"
+		return "2"
 	} else {
-		return "1"
+		return "2"
 	}
 }
 
@@ -824,6 +836,10 @@ func (c *ClusterManager) initK8sComponents() {
 								{
 									Name:  "TIFLASH_CACHE_CAP",
 									Value: c.getTiflashCacheCap(),
+								},
+								{
+									Name:  "AS_RUN_MODE_ENV",
+									Value: RunModeEnvToString(OptionRunMode),
 								},
 							},
 							Name: "supervisor",
