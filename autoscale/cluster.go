@@ -72,15 +72,13 @@ const ReadNodeCloneSetName = "readnode"
 var OptionRunMode = RunModeServeless
 var EnvRegion string
 
-func RunModeEnvToString() string {
-	if OptionRunMode == RunModeLocal {
-		return "local"
-	} else if OptionRunMode == RunModeDedicated {
+func RunModeEnvString4Supervisor() string {
+	if OptionRunMode == RunModeDedicated {
 		return "dedicated"
 	} else if OptionRunMode == RunModeServeless {
 		return "serverless"
 	} else {
-		panic(fmt.Sprintf("unknown value of env TIFLASH_AS_KUBE_RUN_MODE: %v, valid options:{local, dedicated, serverless}", OptionRunMode))
+		return "local"
 	}
 }
 
@@ -839,7 +837,7 @@ func (c *ClusterManager) initK8sComponents() {
 								},
 								{
 									Name:  "AS_RUN_MODE_ENV",
-									Value: RunModeEnvToString(OptionRunMode),
+									Value: RunModeEnvString4Supervisor(),
 								},
 							},
 							Name: "supervisor",
