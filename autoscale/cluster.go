@@ -72,7 +72,7 @@ const ReadNodeCloneSetName = "readnode"
 var OptionRunMode = RunModeServeless
 var EnvRegion string
 
-func RunModeEnvToString(runmode OptionRunMode) string {
+func RunModeEnvToString() string {
 	if OptionRunMode == RunModeLocal {
 		return "local"
 	} else if OptionRunMode == RunModeDedicated {
@@ -80,7 +80,7 @@ func RunModeEnvToString(runmode OptionRunMode) string {
 	} else if OptionRunMode == RunModeServeless {
 		return "serverless"
 	} else {
-		panic(fmt.Sprintf("unknown value of env TIFLASH_AS_KUBE_RUN_MODE: %v, valid options:{local, dedicated, serverless}", envKubeRunMode))
+		panic(fmt.Sprintf("unknown value of env TIFLASH_AS_KUBE_RUN_MODE: %v, valid options:{local, dedicated, serverless}", OptionRunMode))
 	}
 }
 
