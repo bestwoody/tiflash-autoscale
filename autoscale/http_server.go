@@ -172,11 +172,13 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32,
 	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) < minCntOfRequiredPods {
 		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed but topology is not ready, begin to wait at most %vs", HttpResumeWaitTimoueSec)
 		waitSt := time.Now()
-		for len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) < minCntOfRequiredPods && time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
+		topo := Cm4Http.AutoScaleMeta.GetTopology(tenantName)
+		for len(topo) < minCntOfRequiredPods && time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
 			// for time.Now().UnixMilli()-waitSt.UnixMilli() < 15*1000 {
 			time.Sleep(time.Duration(HttpResumeCheckIntervalMs) * time.Millisecond)
-			Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is not ready, keep waiting, it has cost %vms", time.Since(waitSt).Milliseconds())
+			Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is not ready, keep waiting, it has cost %vms, topo: %+v", time.Since(waitSt).Milliseconds(), topo)
 			flag = Cm4Http.Resume(tenantName)
+			topo = Cm4Http.AutoScaleMeta.GetTopology(tenantName)
 		}
 		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is ready, wait cost %vms", time.Since(waitSt).Milliseconds())
 	}
