@@ -163,9 +163,10 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32,
 	_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 	// tenantDesc := Cm4Http.AutoScaleMeta.GetTenantDesc(tenantName)
 	minCntOfRequiredPods := DefaultMinCntOfPod
-	if tenantDesc != nil {
-		minCntOfRequiredPods = tenantDesc.GetMinCntOfPod()
-	}
+	// TODO revert
+	// if tenantDesc != nil {
+	// 	minCntOfRequiredPods = tenantDesc.GetMinCntOfPod()
+	// }
 
 	// wait util topology is not empty or timeout
 	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) < minCntOfRequiredPods {
