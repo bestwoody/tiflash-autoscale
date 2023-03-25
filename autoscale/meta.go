@@ -1384,6 +1384,7 @@ func (c *AutoScaleMeta) addPodIntoTenant(addCnt int, tenant string, tsContainer 
 	if len(undoList) != 0 || exceptionCnt != 0 {
 		Logger.Warnf("[AutoScaleMeta][resize][addPodIntoTenant][%v] exceptionCnt:%v len(undoList):%v", tenant, exceptionCnt, len(undoList))
 	}
+	Logger.Infof("[AutoScaleMeta][resize][addPodIntoTenant][%v] finish addcnt: %v failcnt: %v cost: %vs", tenant, addCnt, failCnt, time.Since(start).Seconds())
 	MetricOfAddPodSuccessCnt.Add(float64(addCnt - failCnt))
 	MetricOfAddPodFailedCnt.Add(float64(failCnt))
 	// c.setConfigMapStateBatch(statesDeltaMap)
@@ -1516,6 +1517,7 @@ func (c *AutoScaleMeta) removePodFromTenant(removeCnt int, tenant string, tsCont
 	Logger.Debugf("[AutoScaleMeta][resize][removePodFromTenant][%v]done. warmpool.size:%v pods:%v", tenant, c.WarmedPods.GetCntOfPods(), c.WarmedPods.GetPodNames())
 	MetricOfRemovePodSuccessCnt.Add(float64(removeCnt - len(undoList)))
 	MetricOfRemovePodFailedCnt.Add(float64(len(undoList)))
+	Logger.Info("[AutoScaleMeta][resize][removePodFromTenant][%v] finish delcnt: %v failcnt: %v cost: %vs", tenant, removeCnt, cnt, time.Since(start).Seconds())
 	return cnt
 }
 
