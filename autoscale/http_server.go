@@ -23,7 +23,7 @@ import (
 )
 
 var HttpResumeWaitTimoueSec = 30
-var HttpResumeCheckIntervalMs = 1000
+var HttpResumeCheckIntervalMs = 100
 
 var httpReqId = atomic.Int32{}
 
@@ -177,7 +177,7 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32,
 		for len(topo) < minCntOfRequiredPods && time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
 			// for time.Now().UnixMilli()-waitSt.UnixMilli() < 15*1000 {
 			time.Sleep(time.Duration(HttpResumeCheckIntervalMs) * time.Millisecond)
-			Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is not ready, keep waiting, it has cost %vms, topo: %+v", time.Since(waitSt).Milliseconds(), topo)
+			// Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is not ready, keep waiting, it has cost %vms, topo: %+v", time.Since(waitSt).Milliseconds(), topo)
 			flag = Cm4Http.Resume(tenantName)
 			topo = Cm4Http.AutoScaleMeta.GetTopology(tenantName)
 		}
