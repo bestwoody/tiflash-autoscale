@@ -162,8 +162,9 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32,
 	flag = Cm4Http.Resume(tenantName)
 	_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 	// tenantDesc := Cm4Http.AutoScaleMeta.GetTenantDesc(tenantName)
-	minCntOfRequiredPods := DefaultMinCntOfPod
+	minCntOfRequiredPods := 1
 	// TODO revert
+	// minCntOfRequiredPods := DefaultMinCntOfPod
 	// if tenantDesc != nil {
 	// 	minCntOfRequiredPods = tenantDesc.GetMinCntOfPod()
 	// }
@@ -180,7 +181,7 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32,
 			flag = Cm4Http.Resume(tenantName)
 			topo = Cm4Http.AutoScaleMeta.GetTopology(tenantName)
 		}
-		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is ready, wait cost %vms", time.Since(waitSt).Milliseconds())
+		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is ready, tenant: %v , wait cost %vms", tenantName, time.Since(waitSt).Milliseconds())
 	}
 
 	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 {
