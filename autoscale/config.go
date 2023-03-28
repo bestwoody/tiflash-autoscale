@@ -301,5 +301,6 @@ func (c *YamlClusterConfig) ToConfigOfCompputeCluster() ConfigOfComputeCluster {
 			},
 		},
 		LastModifiedTs: time.Now().UnixNano(),
+		Version:        c.Version,
 	}
 }
