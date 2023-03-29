@@ -621,7 +621,7 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 	MetricOfDoPodsWarmPendingSnapshot.Set(float64(p.cntOfPending.Load()))
 	MetricOfDoPodsWarmValidSnapshot.Set(float64(p.WarmedPods.GetCntOfPods()))
 	if delta != 0 {
-		Logger.Infof("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v realPendingCnt: %v valid:%v ", failCntTotal, delta, p.cntOfPending.Load(), realPendingCnt, p.WarmedPods.GetCntOfPods())
+		Logger.Infof("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v valid:%v ", failCntTotal, delta, p.cntOfPending.Load(), p.WarmedPods.GetCntOfPods())
 	}
 	p.mu.Unlock()
 
