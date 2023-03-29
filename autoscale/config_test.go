@@ -95,6 +95,7 @@ compute_clusters:
     cpu_upperlimit: 0.6
     region: us-west-2
     version: s3
+    hehe: abc
     `
 
 	defaultConfig = &YamlClusterConfig{

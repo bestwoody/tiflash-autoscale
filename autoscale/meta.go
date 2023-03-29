@@ -81,6 +81,7 @@ type PodDesc struct {
 	startTimeOfAssign int64        //startTime of tenant's assignment
 	mu                sync.RWMutex /// TODO use it //TODO add pod level lock!!!
 
+	startTime       int64 // startTime of pod, used to calcuate pending duration of pod
 	muOfGrpc        sync.Mutex
 	isStateChanging atomic.Bool
 	// pod        *v1.Pod
@@ -600,6 +601,7 @@ func NewPrewarmPool(warmedPods *TenantDesc) *PrewarmPool {
 
 // checked
 func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
+	// c.AutoScaleMeta.PodDescMap
 	failCntTotal := 0
 	p.mu.Lock()
 
@@ -619,7 +621,7 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 	MetricOfDoPodsWarmPendingSnapshot.Set(float64(p.cntOfPending.Load()))
 	MetricOfDoPodsWarmValidSnapshot.Set(float64(p.WarmedPods.GetCntOfPods()))
 	if delta != 0 {
-		Logger.Infof("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v valid:%v ", failCntTotal, delta, p.cntOfPending.Load(), p.WarmedPods.GetCntOfPods())
+		Logger.Infof("[PrewarmPool]DoPodsWarm. failcnt:%v , delta:%v, pending: %v realPendingCnt: %v valid:%v ", failCntTotal, delta, p.cntOfPending.Load(), realPendingCnt, p.WarmedPods.GetCntOfPods())
 	}
 	p.mu.Unlock()
 
@@ -654,6 +656,12 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 				}
 			}
 		}
+	}
+	//clean real old pending pods
+	realOldPendingPods := c.AutoScaleMeta.GetRealOldPendingPodCnt() //  call it after p.mu.unlock to avoid deadlock
+	if len(realOldPendingPods) > 0 {
+		Logger.Warnf("[CntOfPending]DoPodsWarm, clean real old pending pods, cnt: %v pods: %+v", len(realOldPendingPods), realOldPendingPods)
+		c.removePods(realOldPendingPods, 2)
 	}
 	if err != nil {
 		Logger.Errorf("[error][PrewarmPool.DoPodsWarm] error encountered! err:%v", err.Error())
@@ -774,6 +782,19 @@ func (c *AutoScaleMeta) GetPodCnt() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.PodDescMap)
+}
+
+func (c *AutoScaleMeta) GetRealOldPendingPodCnt() []string {
+	ret := make([]string, 0, 5)
+	now := time.Now().Unix()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k, v := range c.PodDescMap {
+		if v.IP == "" && now-v.startTime > 30*60 {
+			ret = append(ret, k)
+		}
+	}
+	return ret
 }
 
 // checked
@@ -1105,7 +1126,7 @@ func (c *AutoScaleMeta) UpdatePod(pod *v1.Pod) {
 	podDesc, ok := c.PodDescMap[name]
 	Logger.Infof("[updatePod] %v cur_ip:%v", name, pod.Status.PodIP)
 	if !ok { // new pod
-		podDesc = &PodDesc{Name: name, IP: pod.Status.PodIP}
+		podDesc = &PodDesc{Name: name, IP: pod.Status.PodIP, startTime: time.Now().Unix()}
 		c.PodDescMap[name] = podDesc
 
 		if pod.Status.PodIP != "" {
