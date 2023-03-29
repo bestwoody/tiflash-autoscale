@@ -790,7 +790,7 @@ func (c *AutoScaleMeta) GetRealOldPendingPodCnt() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for k, v := range c.PodDescMap {
-		if v.IP == "" && now-v.startTime > 30*60 {
+		if v.IP == "" && now-v.startTime > 86400 { // 1 day
 			ret = append(ret, k)
 		}
 	}
