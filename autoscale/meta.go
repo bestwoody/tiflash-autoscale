@@ -660,6 +660,9 @@ func (p *PrewarmPool) DoPodsWarm(c *ClusterManager) {
 	//clean real old pending pods
 	realOldPendingPods := c.AutoScaleMeta.GetRealOldPendingPodCnt() //  call it after p.mu.unlock to avoid deadlock
 	if len(realOldPendingPods) > 0 {
+		if len(realOldPendingPods) >= int(p.cntOfPending.Load()) {
+			p.cntOfPending.Store(0)
+		}
 		Logger.Warnf("[CntOfPending]DoPodsWarm, clean real old pending pods, cnt: %v pods: %+v", len(realOldPendingPods), realOldPendingPods)
 		c.removePods(realOldPendingPods, 2)
 	}
@@ -707,6 +710,10 @@ func (p *PrewarmPool) putWarmedPod(fromTenantName string, pod *PodDesc, isNewPod
 			p.cntOfPending.Add(-1)
 			Logger.Debugf("[CntOfPending]putWarmedPod result:%v", p.cntOfPending.Load())
 		} else {
+			if p.cntOfPending.Load() < 0 {
+				Logger.Warnf("[CntOfPending]cntOfPending < 0, cntOfPending:%v , now correct it", p.cntOfPending.Load())
+				p.cntOfPending.Store(0)
+			}
 			Logger.Debugf("[CntOfPending]putWarmedPod, cntOfPending <= 0, cntOfPending:%v", p.cntOfPending.Load())
 		}
 	}
