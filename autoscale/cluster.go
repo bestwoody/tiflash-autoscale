@@ -668,7 +668,7 @@ func (c *ClusterManager) createCloneSet(cloneSet v1alpha1.CloneSet) (*v1alpha1.C
 
 func (c *ClusterManager) getSupervisorRdVersion() string {
 	if OptionRunMode == RunModeServeless {
-		return "2"
+		return "3"
 	} else if OptionRunMode == RunModeDedicated { //dedicated tier
 		return "2"
 	} else {
@@ -679,6 +679,8 @@ func (c *ClusterManager) getSupervisorRdVersion() string {
 func (c *ClusterManager) getTiflashCachePath() string {
 	if OptionRunMode == RunModeDedicated { //dedicated tier
 		return "/data/cache"
+	} else if OptionRunMode == RunModeServeless {
+		return "/data/cache"
 	} else {
 		return ""
 	}
@@ -687,9 +689,11 @@ func (c *ClusterManager) getTiflashCachePath() string {
 
 func (c *ClusterManager) getTiflashCacheCap() string {
 	if OptionRunMode == RunModeDedicated { //dedicated tier
-		return "107374182400"
+		return "107374182400" // 100G
+	} else if OptionRunMode == RunModeServeless {
+		return "107374182400" // 100G
 	} else {
-		return "10737418240"
+		return "10737418240" //10G
 	}
 }
 
@@ -706,18 +710,51 @@ func (c *ClusterManager) getVolumesMount() []v1.VolumeMount {
 				MountPath: "/data",
 			},
 		}
+	} else if OptionRunMode == RunModeServeless {
+		return []v1.VolumeMount{
+			{
+				Name:      "sharedtmpdisk",
+				MountPath: "/tiflash/log/",
+			},
+
+			{
+				Name:      "cachedisk",
+				MountPath: "/data",
+			},
+		}
 	} else {
 		return []v1.VolumeMount{
 			{
 				Name:      "sharedtmpdisk",
 				MountPath: "/tiflash/log/",
-			}}
+			},
+		}
 	}
 }
 
 func (c *ClusterManager) getVolumeClaimTemplates() []v1.PersistentVolumeClaim {
 	if OptionRunMode == RunModeServeless {
-		return nil
+		scn := "ebs-sc"
+		vm := v1.PersistentVolumeFilesystem
+		return []v1.PersistentVolumeClaim{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cachedisk",
+				},
+				Spec: v1.PersistentVolumeClaimSpec{
+					AccessModes: []v1.PersistentVolumeAccessMode{
+						"ReadWriteOnce",
+					},
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							"storage": resource.MustParse("105Gi"),
+						},
+					},
+					StorageClassName: &scn,
+					VolumeMode:       &vm,
+				},
+			},
+		}
 	} else if OptionRunMode == RunModeDedicated { //dedicated tier
 		scn := "local-storage"
 		vm := v1.PersistentVolumeFilesystem
