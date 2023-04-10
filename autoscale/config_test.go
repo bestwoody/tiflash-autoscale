@@ -75,7 +75,7 @@ compute_clusters:
 	assertEqual(t, yamlConfig.ComputeClusters[0].Region, "us-west-3")
 }
 
-func TestEmptyYamlConfig(t *testing.T) {
+func TestYamlConfig2(t *testing.T) {
 	InitTestEnv()
 	var data = `
 `
@@ -85,4 +85,34 @@ func TestEmptyYamlConfig(t *testing.T) {
 	testByte := []byte(data)
 	yamlConfig := LoadYamlConfig(testByte, defaultConfig)
 	assertEqual(t, len(yamlConfig.ComputeClusters), 0)
+	data = `
+compute_clusters:
+  - id: 1379661944642684098
+    min_cores: 16
+    max_cores: 32
+    init_cores: 16
+    cpu_lowerlimit: 0.2
+    cpu_upperlimit: 0.6
+    region: us-west-2
+    version: s3
+    hehe: abc
+    `
+
+	defaultConfig = &YamlClusterConfig{
+		MinCores: 4, MaxCores: 16, InitCores: 4, WindowSeconds: 120, AutoPauseSeconds: 121,
+		CpuLowerLimit: 0.2, CpuUpperLimit: 0.7, Pd: "testpdhost"}
+	testByte = []byte(data)
+	yamlConfig = LoadYamlConfig(testByte, defaultConfig)
+	assertEqual(t, len(yamlConfig.ComputeClusters), 1)
+	assertEqual(t, yamlConfig.ComputeClusters[0].Id, "1379661944642684098")
+	assertEqual(t, yamlConfig.ComputeClusters[0].MinCores, 16)
+	assertEqual(t, yamlConfig.ComputeClusters[0].MaxCores, 32)
+	assertEqual(t, yamlConfig.ComputeClusters[0].InitCores, 16)
+	assertEqual(t, yamlConfig.ComputeClusters[0].WindowSeconds, 120)
+	assertEqual(t, yamlConfig.ComputeClusters[0].AutoPauseSeconds, 121)
+	assertEqual(t, yamlConfig.ComputeClusters[0].CpuLowerLimit, 0.2)
+	assertEqual(t, yamlConfig.ComputeClusters[0].CpuUpperLimit, 0.6)
+	assertEqual(t, yamlConfig.ComputeClusters[0].Pd, "testpdhost")
+	assertEqual(t, yamlConfig.ComputeClusters[0].Region, "us-west-2")
+	assertEqual(t, yamlConfig.ComputeClusters[0].Version, "s3")
 }

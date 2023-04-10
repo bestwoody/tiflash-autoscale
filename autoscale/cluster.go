@@ -72,6 +72,16 @@ const ReadNodeCloneSetName = "readnode"
 var OptionRunMode = RunModeServeless
 var EnvRegion string
 
+func RunModeEnvString4Supervisor() string {
+	if OptionRunMode == RunModeDedicated {
+		return "dedicated"
+	} else if OptionRunMode == RunModeServeless {
+		return "serverless"
+	} else {
+		return "local"
+	}
+}
+
 func outsideConfig() (*restclient.Config, error) {
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
@@ -399,11 +409,11 @@ func (task *AnalyzeTask) analyzeTaskLoop(c *ClusterManager) {
 			if stats != nil && tenantMetricDesc.MinOfPodTimeseriesSize >= 2 && tenantMetricDesc.MaxOfPodMinTime < now-int64(autoScaleIntervalSec)+30 {
 				cpuusage := stats[0].Avg()
 
-				Logger.Infof("[analyzeTaskLoop][%v]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v ", tenant.Name, tenant.Name,
-					stats[0].Avg(), stats[0].Cnt(), podCpuMap)
-
 				minCpuUsageThreshold, maxCpuUsageThreshold := tenant.GetLowerAndUpperCpuScaleThreshold()
 				bestPods, _ := ComputeBestPodsInRuleOfCompute(tenant, cpuusage, minCpuUsageThreshold, maxCpuUsageThreshold)
+
+				Logger.Infof("[analyzeTaskLoop][%v]ComputeStatisticsOfTenant, Tenant %v , cpu usage: %v %v , PodsCpuMap: %+v bestPods: %v min_max_cpu_threshold: %v~%v ", tenant.Name, tenant.Name,
+					stats[0].Avg(), stats[0].Cnt(), podCpuMap, bestPods, minCpuUsageThreshold, maxCpuUsageThreshold)
 				if bestPods != -1 && cntOfPods != bestPods {
 					Logger.Infof("[analyzeTaskLoop][%v] resize pods, from %v to  %v , tenant: %v", tenant.Name, tenant.GetCntOfPods(), bestPods, tenant.Name)
 					c.AutoScaleMeta.ResizePodsOfTenant(cntOfPods, bestPods, tenant.Name, c.tsContainer)
@@ -658,16 +668,18 @@ func (c *ClusterManager) createCloneSet(cloneSet v1alpha1.CloneSet) (*v1alpha1.C
 
 func (c *ClusterManager) getSupervisorRdVersion() string {
 	if OptionRunMode == RunModeServeless {
-		return "1"
+		return "3"
 	} else if OptionRunMode == RunModeDedicated { //dedicated tier
-		return "1"
+		return "2"
 	} else {
-		return "1"
+		return "2"
 	}
 }
 
 func (c *ClusterManager) getTiflashCachePath() string {
 	if OptionRunMode == RunModeDedicated { //dedicated tier
+		return "/data/cache"
+	} else if OptionRunMode == RunModeServeless {
 		return "/data/cache"
 	} else {
 		return ""
@@ -677,9 +689,11 @@ func (c *ClusterManager) getTiflashCachePath() string {
 
 func (c *ClusterManager) getTiflashCacheCap() string {
 	if OptionRunMode == RunModeDedicated { //dedicated tier
-		return "107374182400"
+		return "107374182400" // 100G
+	} else if OptionRunMode == RunModeServeless {
+		return "107374182400" // 100G
 	} else {
-		return "10737418240"
+		return "10737418240" //10G
 	}
 }
 
@@ -696,20 +710,53 @@ func (c *ClusterManager) getVolumesMount() []v1.VolumeMount {
 				MountPath: "/data",
 			},
 		}
+	} else if OptionRunMode == RunModeServeless {
+		return []v1.VolumeMount{
+			{
+				Name:      "sharedtmpdisk",
+				MountPath: "/tiflash/log/",
+			},
+
+			{
+				Name:      "cachedisk",
+				MountPath: "/data",
+			},
+		}
 	} else {
 		return []v1.VolumeMount{
 			{
 				Name:      "sharedtmpdisk",
 				MountPath: "/tiflash/log/",
-			}}
+			},
+		}
 	}
 }
 
 func (c *ClusterManager) getVolumeClaimTemplates() []v1.PersistentVolumeClaim {
 	if OptionRunMode == RunModeServeless {
-		return nil
+		scn := "ebs-sc"
+		vm := v1.PersistentVolumeFilesystem
+		return []v1.PersistentVolumeClaim{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cachedisk",
+				},
+				Spec: v1.PersistentVolumeClaimSpec{
+					AccessModes: []v1.PersistentVolumeAccessMode{
+						"ReadWriteOnce",
+					},
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							"storage": resource.MustParse("105Gi"),
+						},
+					},
+					StorageClassName: &scn,
+					VolumeMode:       &vm,
+				},
+			},
+		}
 	} else if OptionRunMode == RunModeDedicated { //dedicated tier
-		scn := "cloud-ssd"
+		scn := "local-storage"
 		vm := v1.PersistentVolumeFilesystem
 		return []v1.PersistentVolumeClaim{
 			{
@@ -824,6 +871,10 @@ func (c *ClusterManager) initK8sComponents() {
 								{
 									Name:  "TIFLASH_CACHE_CAP",
 									Value: c.getTiflashCacheCap(),
+								},
+								{
+									Name:  "AS_RUN_MODE_ENV",
+									Value: RunModeEnvString4Supervisor(),
 								},
 							},
 							Name: "supervisor",

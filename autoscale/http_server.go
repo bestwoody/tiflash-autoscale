@@ -130,7 +130,7 @@ func SharedFixedPool(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32) {
+func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32, version string) {
 	ret := ResumeAndGetTopologyResult{Topology: make([]string, 0, 5)}
 	retStr := ""
 	defer func() {
@@ -145,7 +145,7 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32)
 	if !flag {
 		//register new tenant for serveless tier
 		if OptionRunMode == RunModeLocal || OptionRunMode == RunModeServeless || OptionRunMode == RunModeDedicated || OptionRunMode == RunModeTest {
-			Cm4Http.AutoScaleMeta.SetupAutoPauseTenantWithPausedState(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod)
+			Cm4Http.AutoScaleMeta.SetupAutoPauseTenantWithPausedState(tenantName, DefaultMinCntOfPod, DefaultMaxCntOfPod, version)
 		}
 		flag, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
 		if !flag {
@@ -154,27 +154,34 @@ func ResumeAndGetTopology(w http.ResponseWriter, tenantName string, reqid int32)
 			return
 		}
 	}
+	tenantDesc := Cm4Http.AutoScaleMeta.GetTenantDesc(tenantName)
+	tenantDesc.CheckAndUpdateVersion(version)
 	// state := req.FormValue("state")
 
 	// if currentState == TenantStatePaused {
 	flag = Cm4Http.Resume(tenantName)
 	_, currentState, _ = Cm4Http.AutoScaleMeta.GetTenantState(tenantName)
-	tenantDesc := Cm4Http.AutoScaleMeta.GetTenantDesc(tenantName)
-	minCntOfRequiredPods := DefaultMinCntOfPod
-	if tenantDesc != nil {
-		minCntOfRequiredPods = tenantDesc.GetMinCntOfPod()
-	}
+	// tenantDesc := Cm4Http.AutoScaleMeta.GetTenantDesc(tenantName)
+	minCntOfRequiredPods := 1
+	// TODO revert
+	// minCntOfRequiredPods := DefaultMinCntOfPod
+	// if tenantDesc != nil {
+	// 	minCntOfRequiredPods = tenantDesc.GetMinCntOfPod()
+	// }
 
 	// wait util topology is not empty or timeout
 	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) < minCntOfRequiredPods {
 		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed but topology is not ready, begin to wait at most %vs", HttpResumeWaitTimoueSec)
 		waitSt := time.Now()
-		for len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) < minCntOfRequiredPods && time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
+		topo := Cm4Http.AutoScaleMeta.GetTopology(tenantName)
+		for len(topo) < minCntOfRequiredPods && time.Since(waitSt).Seconds() < float64(HttpResumeWaitTimoueSec) {
 			// for time.Now().UnixMilli()-waitSt.UnixMilli() < 15*1000 {
 			time.Sleep(time.Duration(HttpResumeCheckIntervalMs) * time.Millisecond)
+			// Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is not ready, keep waiting, it has cost %vms, topo: %+v", time.Since(waitSt).Milliseconds(), topo)
 			flag = Cm4Http.Resume(tenantName)
+			topo = Cm4Http.AutoScaleMeta.GetTopology(tenantName)
 		}
-		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is ready, wait cost %vms", time.Since(waitSt).Milliseconds())
+		Logger.Warnf("[HTTP]ResumeAndGetTopology, resumed and topology is ready, tenant: %v , wait cost %vms", tenantName, time.Since(waitSt).Milliseconds())
 	}
 
 	if len(Cm4Http.AutoScaleMeta.GetTopology(tenantName)) <= 0 {
@@ -205,8 +212,9 @@ func HttpHandleResumeAndGetTopology(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	ip, _ := getIP(req)
 	tenantName := req.FormValue("tidbclusterid")
-	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v, client: %v, reqid: %v", tenantName, ip, curReqID)
-	ResumeAndGetTopology(w, tenantName, curReqID)
+	version := req.FormValue("cn_version")
+	Logger.Infof("[HTTP]ResumeAndGetTopology, tenantName: %v, client: %v, reqid: %v, cn_version: %v", tenantName, ip, curReqID, version)
+	ResumeAndGetTopology(w, tenantName, curReqID, version)
 }
 
 func HttpHandlePauseForTest(w http.ResponseWriter, req *http.Request) {
