@@ -668,7 +668,7 @@ func (c *ClusterManager) createCloneSet(cloneSet v1alpha1.CloneSet) (*v1alpha1.C
 
 func (c *ClusterManager) getSupervisorRdVersion() string {
 	if OptionRunMode == RunModeServeless {
-		return "3"
+		return "4"
 	} else if OptionRunMode == RunModeDedicated { //dedicated tier
 		return "2"
 	} else {
@@ -691,7 +691,7 @@ func (c *ClusterManager) getTiflashCacheCap() string {
 	if OptionRunMode == RunModeDedicated { //dedicated tier
 		return "107374182400" // 100G
 	} else if OptionRunMode == RunModeServeless {
-		return "107374182400" // 100G
+		return "80530636800" // 75G
 	} else {
 		return "10737418240" //10G
 	}
